@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Animated README logo (reduced-motion users see the still logo)
+
 * Run with file stdin (`cmd run --stdin FILE`) or an empty editor buffer
   (`--edit-stdin`, VISUAL/EDITOR/vi). Add binding rows g i (framework path
   chooser), g e (editor), and g r / cmd rerun (latest run); view.stdin opts out
