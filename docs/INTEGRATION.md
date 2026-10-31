@@ -6,6 +6,12 @@ own CLI resolution, catalog data pages, focus, lists, filtering, settings,
 terminal handoff, binding rows and hint rendering. No sibling library or owner
 configuration is changed.
 
+The script preview belongs in the app because it projects command metadata
+and source text. It reuses ochazuke's detail windows for scrolling and modal
+stack for viewing; keys and hints remain binding data. Sorting needs only a
+binding to the existing `ochazuke.setting.cycle` verb plus an observer to reload
+the list, whose stable row IDs preserve selection. No new setting verb is added.
+
 The app follows `o-gh/main.go`, `o-gh/catalog.go`, `o-gh/tui.go` and
 `o-git/app.go`: mount the runtime with `cli.Mount`, publish a `cmd` noun and
 data page, and mount that same page standalone through `cli.MountPage`.
@@ -19,6 +25,13 @@ case for a particular host, script name, pane, harness or noun is introduced.
 
 Known host gaps, verified from the current local APIs:
 
+* The catalog declares detail kind `script`. Standalone and pick register its
+  factory through `PageConfig.DetailKinds`; a catalog host needs the same kind
+  registered to render this custom preview. Unknown kinds fall back to the
+  framework's record detail. The external catalog proxy also cannot open this
+  app's modal from a captured CLI show result. A shared script/text detail kind
+  and viewer contract belong in ochazuke and its hosts; mounted rendering was
+  not claimed or tested here.
 * `ochazuke/cli.CatalogList` has id, noun, source and title, and has no initial
   selection policy. Standalone selects the newest command via `List.Select`.
   A mounted page starts where its host chooses. A general catalog initial
@@ -36,8 +49,10 @@ Known host gaps, verified from the current local APIs:
   `list.start-newest` control the standalone page; hosts own their own timers
   and cursor policy.
 
-Skipped o-story fixtures under `cmd/o-story/stories/cmds/` record the two host
+Skipped o-story fixtures under `cmd/o-story/stories/cmds/` record the earlier host
 gaps for a coordinator's library follow-up. Two more fixtures record app CLI
 and rendering regressions covered by executable Go tests; the shared o-story
-runner has no app harness. These skips are not claims of passing host
+runner has no app harness. The six `script-*.json` stories now execute through
+the app adapter in `script_stories_test.go`, exercising formatting, scrolling,
+viewing, sort cycling, hidden detail and picker return. These skips are not claims of passing host
 integration. No owner mtm/tuios process was driven for this lane.

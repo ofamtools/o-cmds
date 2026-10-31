@@ -33,7 +33,7 @@ func mountPicker(a *App) (*picker, error) {
 		a.r.Quit = true
 		return ochazuke.Done(nil)
 	}), "Choose the command and exit with its script").Mode("normal").Bind("enter", ochazuke.Do("cmd.pick"))
-	cancel := ochazuke.Do("app.quit").Captured()
+	cancel := ochazuke.Do("app.quit").Guard("no-modal").Captured()
 	cancel.Instance = "app"
 	cancel.Keys = "esc"
 	if e = a.r.Bind(cancel); e != nil {

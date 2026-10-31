@@ -1,0 +1,10 @@
+{
+  "name": "Escape closes a picker script viewer without cancelling the picker",
+  "picker": true,
+  "commands": [{"name": "picker-view", "script": "echo still-picking\n"}],
+  "script": ["v", "esc"],
+  "expect": [
+    {"after": 1, "modal": true, "contains": ["1 │ echo still-picking"]},
+    {"after": 2, "modal": false, "selected": "picker-view"}
+  ]
+}

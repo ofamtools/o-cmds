@@ -12,7 +12,12 @@ the page. Keys are application binding rows; the framework owns motions.
 | `u` | `u`, `:undo` | Similar: restores a command snapshot, including script bytes. No undo of process side effects. |
 | `y` | `y` | Similar: yanks the whole script to the clipboard, rather than starting a text operator. |
 | `:!cmd` | `:!` | Similar: Enter runs the selected saved script through sh, handing off the terminal standalone. |
-| `v` | `v` | Different: views a script with the configured pager; does not enter Vim's visual selection mode. |
+| `v` | `v` | Different: opens a read-only script modal; does not enter Vim's visual selection mode. |
+| `j` / `k` in a buffer | `j`, `k` | Similar: scrolls the script modal one display line instead of moving a text cursor. |
+| Ctrl-D / Ctrl-U | `CTRL-D`, `CTRL-U` | Similar: scrolls the preview or modal, eight display lines rather than Vim's half-window default. |
+| `gg` / `G` | `gg`, `G` | Similar: modal `g` / `G` scrolls to beginning/end; beginning uses one `g`, without a text cursor. |
+| `q` / Escape | `q`, `<Esc>` | Different: closes the script modal and restores the list, rather than recording a macro or leaving a Vim mode. |
+| `o` | `o` | Different: cycles list.order while preserving selection, rather than inserting a new text line. |
 | `:edit` | `:edit` | Similar: opens the script in `$EDITOR`; editor controls its own writes. |
 | `inputlist()` | `inputlist()` | Similar: optional `pick` chooses one item or cancels; it returns script text on stdout rather than a Vim numeric result. |
 | Shell function initialization | n/a | A shell convenience for history and current-shell evaluation; no Vim interaction counterpart. |

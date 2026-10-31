@@ -1,0 +1,11 @@
+{
+  "name": "view.detail still turns the script pane off without disabling v",
+  "commands": [{"name": "hidden", "script": "echo HIDDEN_SCRIPT\n"}],
+  "settings": {"view.detail": false},
+  "script": ["v", "q"],
+  "expect": [
+    {"after": 0, "lacks": ["HIDDEN_SCRIPT"]},
+    {"after": 1, "contains": ["1 │ echo HIDDEN_SCRIPT"], "modal": true},
+    {"after": 2, "lacks": ["HIDDEN_SCRIPT"], "modal": false, "selected": "hidden"}
+  ]
+}

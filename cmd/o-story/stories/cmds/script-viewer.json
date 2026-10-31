@@ -1,0 +1,14 @@
+{
+  "name": "v opens an in-app scrollable script viewer and q or escape returns",
+  "commands": [{"name": "viewer", "script": "echo 01\necho 02\necho 03\necho 04\necho 05\necho 06\necho 07\necho 08\necho 09\necho 10\necho 11\necho 12\necho 13\necho 14\necho 15\necho 16\necho 17\necho 18\necho 19\necho 20\necho 21\necho 22\necho 23\necho 24\n"}],
+  "script": ["v", "j", "ctrl+d", "G", "g", "q", "v", "esc"],
+  "expect": [
+    {"after": 1, "modal": true, "contains": ["1 │ echo 01"]},
+    {"after": 2, "modal": true, "contains": ["2 │ echo 02"], "viewerOffsetMin": 1, "viewerOffsetMax": 1},
+    {"after": 3, "modal": true, "viewerOffsetMin": 9, "viewerOffsetMax": 9},
+    {"after": 4, "modal": true, "contains": ["24 │ echo 24"]},
+    {"after": 5, "modal": true, "contains": ["1 │ echo 01"], "viewerOffsetMax": 0},
+    {"after": 6, "modal": false, "selected": "viewer"},
+    {"after": 8, "modal": false, "selected": "viewer"}
+  ]
+}

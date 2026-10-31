@@ -51,7 +51,7 @@ var columns = []ochazuke.Column{
 func commandPage(detail bool) ocli.CatalogPage {
 	p := ocli.CatalogPage{ID: pageID, Title: "Commands", Layout: ocli.LayoutSplit, Lists: []ocli.CatalogList{{ID: listID, Noun: "cmd", Source: "cmd.list", Title: "Commands"}}}
 	if detail {
-		p.Detail = &ocli.CatalogDetail{Fields: []string{"name", "description", "author", "cwd", "tags", "pinned", "script", "path"}}
+		p.Detail = &ocli.CatalogDetail{Kind: scriptDetailKind, Fields: []string{"name", "description", "author", "cwd", "tags", "script"}}
 	}
 	return p
 }
@@ -89,7 +89,11 @@ func newApp(s *Store, in io.Reader, out, errOut io.Writer) (*App, error) {
 		Bind("e", ochazuke.Do("cmd.edit")).
 		Bind("d d", ochazuke.Do("cmd.delete")).
 		Bind("u", ochazuke.Do("cmd.undo")).
-		Bind("s", ochazuke.Do("cmd.star"))
+		Bind("s", ochazuke.Do("cmd.star")).
+		Bind("o", ochazuke.Do("ochazuke.setting.cycle", ochazuke.Arguments{"name": "list.order"})).
+		Bind("ctrl+d", ochazuke.Do("ochazuke.detail.scroll", ochazuke.Arguments{"lines": 8}).Guard("detail-scrolls")).
+		Bind("ctrl+u", ochazuke.Do("ochazuke.detail.scroll", ochazuke.Arguments{"lines": -8}).Guard("detail-scrolls"))
+	registerScriptViewer(a.r)
 	if err := ocli.DeclarePage(a.r, commandPage(a.r.Settings().Bool("view.detail"))); err != nil {
 		return nil, err
 	}
@@ -266,6 +270,7 @@ func (a *App) rows(filter string) ([]ocli.Row, error) {
 			return nil, e
 		}
 		data["script"] = text
+		data["age"] = age(c.Created, a.store.now())
 		name := c.Name
 		if c.Pinned {
 			name = "★ " + name
@@ -292,13 +297,7 @@ func (a *App) show(c ochazuke.Ctx, row Command) ochazuke.Result {
 		return ochazuke.Failed(e)
 	}
 	if a.tui {
-		// The framework owns terminal suspension, restoration and job status.
-		pager := os.Getenv("PAGER")
-		if pager == "" {
-			pager = "more"
-		}
-		cmd := exec.CommandContext(background(), "sh", "-c", "exec "+pager+" \"$@\"", "o-cmds-view", row.Path)
-		return ochazuke.Foreground(cmd)
+		return result(nil, openScriptViewer(a.r, row.Name, text))
 	}
 	return ochazuke.Done(struct {
 		Command

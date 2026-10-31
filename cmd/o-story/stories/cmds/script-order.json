@@ -1,0 +1,10 @@
+{
+  "name": "o cycles the existing list.order enum and keeps the command selected",
+  "commands": [{"name": "older", "script": "echo old\n"}, {"name": "newer", "script": "echo new\n"}],
+  "script": ["o", "o"],
+  "expect": [
+    {"after": 0, "selected": "newer", "order": ["older", "newer"]},
+    {"after": 1, "selected": "newer", "order": ["newer", "older"], "modal": false},
+    {"after": 2, "selected": "newer", "order": ["older", "newer"], "modal": false}
+  ]
+}

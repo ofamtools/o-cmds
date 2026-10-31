@@ -42,13 +42,14 @@ func mountPage(a *App) (*page, error) {
 	}
 	m := ochazuke.NewModel(a.r)
 	m.Title = "o-cmds"
-	v, e := ocli.MountPage(m, doc, commandPage(a.r.Settings().Bool("view.detail")), ocli.PageConfig{})
+	v, e := ocli.MountPage(m, doc, commandPage(a.r.Settings().Bool("view.detail")), ocli.PageConfig{DetailKinds: map[string]ocli.DetailFactory{scriptDetailKind: newScriptDetail}})
 	if e != nil {
 		return nil, e
 	}
 	p := &page{a: a, m: m, v: v}
 	a.tui = true
 	a.changed = func() { p.dirty = true }
+	a.r.Settings().Observe("list.order", func(string, any) { p.dirty = true })
 	quit := ochazuke.Do("app.quit")
 	quit.Instance = pageID
 	quit.Mode = "normal"

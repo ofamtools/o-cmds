@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+* Preview scripts with line numbers, preserved spacing and a compact metadata
+  header; scroll the detail pane with Ctrl-D/Ctrl-U or hide it with view.detail.
+* View scripts in a scrollable in-app modal; cycle list.order with a binding
+  row while keeping the selected command, including in pick mode.
+
 * Add optional `pick` mode: print a named/numbered script or select one from
   the Commands page, with clean stdout and non-zero Escape cancellation.
 * Add `shell-init zsh|bash [--name NAME]`, printing a current-shell function

@@ -85,11 +85,29 @@ Author names default to `owner`. Agent additions use `O_CMDS_AUTHOR`,
 `--author` overrides the name. No environment file or credentials are read.
 
 The TUI uses binding rows, with hints generated from the effective bindings.
-Default actions are Enter run, `v` view through `$PAGER` (default `more`), `y`
+Default actions are Enter run, `v` view inside the TUI, `y`
 copy, `e` edit, `d d` delete, `u` undo, `s` star. `/` filters using ochazuke's
 list/search bindings; `?` shows help; `q` quits standalone. Rebind or unbind
 these through ochazuke's `bindings`/`config` verbs. No keys are switched on in
 application code.
+
+The right pane shows a compact name/description/author/age/cwd/tags header,
+then the script with line numbers. Indentation, spaces and blank lines remain
+visible; long lines wrap without removing spaces, and tabs display as four
+spaces. The stored script and copy/pick output keep their original bytes.
+`ctrl+d` / `ctrl+u` scroll the script eight display lines while the metadata
+stays put. Moving the list cursor updates the preview.
+
+`v` opens a large read-only modal without leaving the TUI. Scroll with `j` /
+`k`, `ctrl+d` / `ctrl+u`, or `g` / `G` for the beginning/end; `q` or Escape
+returns to the list (also in pick mode). Scripts use plain terminal monospace.
+The `view.detail=false` setting hides the right pane; the viewer still works.
+
+`o` cycles the existing `list.order` setting between oldest-first and
+newest-first, keeping the cursor on the same command. This uses ochazuke's
+setting-cycle verb and applies to the current session; persist your preferred
+default through the settings command. Default order is oldest-first, with the
+newest command at the bottom.
 
 Optional shell convenience: `o-cmds pick` opens the same Commands page, with
 Enter choosing the script and exiting instead of running it. Escape cancels

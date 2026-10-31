@@ -1,0 +1,13 @@
+{
+  "name": "script preview preserves indentation and blank lines and follows selection",
+  "commands": [
+    {"name": "older", "script": "echo older-command\n"},
+    {"name": "formatted", "description": "Indented script", "author": {"name": "sol", "harness": "codex", "pane": "p7"}, "cwd": "/tmp/o-cmds-lane", "tags": ["shell", "demo"], "script": "if true; then\n    printf 'one'\n\n    printf 'two'\nfi\n"}
+  ],
+  "script": ["k", "j"],
+  "expect": [
+    {"after": 0, "selected": "formatted", "contains": ["Name: formatted", "Description: Indented script", "Author: sol/codex@p7", "Age: now", "Cwd: /tmp/o-cmds-lane", "Tags: shell, demo", "1 │ if true; then", "2 │     printf 'one'", "3 │ ", "4 │     printf 'two'", "5 │ fi"]},
+    {"after": 1, "selected": "older", "contains": ["1 │ echo older-command"], "lacks": ["printf 'one'"]},
+    {"after": 2, "selected": "formatted", "contains": ["2 │     printf 'one'"]}
+  ]
+}
