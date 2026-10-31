@@ -3,6 +3,12 @@
 ## Unreleased
 
 - Animated README logo (reduced-motion users see the still logo)
+* Catalog hosts (mtm Commands page, nabe) show command metadata above the
+  script as a fenced Markdown code block through ochazuke detail sections,
+  instead of the "detail kind script is not registered" record with the
+  script on one line. Rows gain `detail_md` and `author_label`. Standalone keeps
+  the numbered script view; `view.detail-style=markdown` uses the host look.
+  Requires ochazuke v0.75.1 (was v0.63.0).
 
 * Run with file stdin (`cmd run --stdin FILE`) or an empty editor buffer
   (`--edit-stdin`, VISUAL/EDITOR/vi). Add binding rows g i (framework path
