@@ -1,0 +1,375 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"slices"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/unixsuperhero/ochazuke"
+	ocli "github.com/unixsuperhero/ochazuke/cli"
+)
+
+const version = "0.1.0"
+const pageID = "cmds"
+const listID = "cmds/commands"
+
+type App struct {
+	store       *Store
+	r           *ochazuke.Runtime
+	in          io.Reader
+	out, errOut io.Writer
+	run         Runner
+	tui         bool
+	changed     func()
+}
+
+type verbSpec struct {
+	name, description string
+	params            map[string]ochazuke.Parameter
+	positional        []string
+	handler           ochazuke.AppHandler
+	rows              bool
+	output            string
+}
+
+var columns = []ochazuke.Column{
+	{Title: "#", Width: 5, Align: ochazuke.AlignRight},
+	{Title: "Name", Min: 12, Max: 28},
+	{Title: "Description", Min: 12},
+	{Title: "Age", Width: 7, Priority: 2},
+	{Title: "Author", Max: 24, Priority: 1},
+}
+
+func commandPage(detail bool) ocli.CatalogPage {
+	p := ocli.CatalogPage{ID: pageID, Title: "Commands", Layout: ocli.LayoutSplit, Lists: []ocli.CatalogList{{ID: listID, Noun: "cmd", Source: "cmd.list", Title: "Commands"}}}
+	if detail {
+		p.Detail = &ocli.CatalogDetail{Fields: []string{"name", "description", "author", "cwd", "tags", "pinned", "script", "path"}}
+	}
+	return p
+}
+
+func newApp(s *Store, in io.Reader, out, errOut io.Writer) (*App, error) {
+	a := &App{store: s, in: in, out: out, errOut: errOut, run: func(c *exec.Cmd) error { return c.Run() }}
+	a.r = ochazuke.NewRuntime()
+	a.r.Config().App = "o-cmds"
+	if err := a.r.DeclareSetting(
+		ochazuke.Setting{Name: "list.order", Type: ochazuke.SettingString, Default: "oldest-first", Enum: []string{"oldest-first", "newest-first"}, Description: "Command order, including numbered CLI targets"},
+		ochazuke.Setting{Name: "list.start-newest", Type: ochazuke.SettingBoolean, Default: true, Description: "Start the standalone page on the newest command"},
+		ochazuke.Setting{Name: "view.detail", Type: ochazuke.SettingBoolean, Default: true, Description: "Show the script and metadata beside the command list"},
+	); err != nil {
+		return nil, err
+	}
+	for _, spec := range a.specs() {
+		b := a.r.Define("cmd").Columns(columns...).Verb(spec.name, spec.handler, spec.description)
+		if len(spec.positional) > 0 {
+			b.Positional(spec.positional...)
+		}
+		if spec.rows {
+			b.Rows("cmd").Fetch().Quiet()
+		}
+		op := a.r.Operations["cmd."+spec.name]
+		op.Parameters = spec.params
+		a.r.Operations[op.Key()] = op
+	}
+	// Every application key is a binding row. Help/footer hints read the
+	// runtime's effective bindings, including owner overrides.
+	a.r.Define("cmd").Mode("normal").
+		Bind("enter", ochazuke.Do("cmd.run")).
+		Bind("v", ochazuke.Do("cmd.show")).
+		Bind("y", ochazuke.Do("cmd.copy", ochazuke.Arguments{"yank": true})).
+		Bind("e", ochazuke.Do("cmd.edit")).
+		Bind("d d", ochazuke.Do("cmd.delete")).
+		Bind("u", ochazuke.Do("cmd.undo")).
+		Bind("s", ochazuke.Do("cmd.star"))
+	if err := ocli.DeclarePage(a.r, commandPage(a.r.Settings().Bool("view.detail"))); err != nil {
+		return nil, err
+	}
+	return a, nil
+}
+
+func (a *App) shell() *ocli.Shell {
+	sh := ocli.New(a.r, "o-cmds", a.in, a.out, a.errOut)
+	sh.Version = version
+	sh.Reveal = func(target string) error {
+		row, err := a.store.Resolve(target, a.newestFirst())
+		if err != nil {
+			return err
+		}
+		list := a.r.List("cmd-targets")
+		if list == nil {
+			list, err = a.r.AddList("cmd-targets", nil)
+			if err != nil {
+				return err
+			}
+		}
+		return list.SetItems([]ochazuke.ListItem{{ID: target, Noun: "cmd", Label: row.Name, Data: "cmd/" + row.ID}})
+	}
+	return sh
+}
+
+func param(desc string) ochazuke.Parameter {
+	return ochazuke.Parameter{Type: "string", Description: desc}
+}
+
+func (a *App) specs() []verbSpec {
+	target := param("Command name, displayed number or stable ID (defaults to selected row)")
+	return []verbSpec{
+		{name: "add", description: "Record a shell script, including an empty or unassociated one", params: map[string]ochazuke.Parameter{"name": param("Name; duplicates receive a suffix"), "desc": param("Description"), "file": param("Read script from file; otherwise script or stdin"), "script": param("Script text"), "cwd": param("Working directory; absence is allowed"), "tags": {Type: "array", Description: "Tags"}, "author": param("Author name; defaults to agent environment or owner")}, handler: a.add},
+		{name: "list", description: "List numbered commands; newest at the bottom by default", params: map[string]ochazuke.Parameter{"filter": param("Match name, description or tags")}, handler: a.list, rows: true, output: "table"},
+		{name: "show", description: "Show a command's script and metadata", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.show), output: "script"},
+		{name: "run", description: "Run with sh in the recorded cwd, streaming output and preserving exit status", params: map[string]ochazuke.Parameter{"target": target, "args": {Type: "array", Description: "Script arguments (CLI also accepts -- args...)"}}, positional: []string{"target"}, handler: a.on(a.execute)},
+		{name: "copy", description: "Print the script, or --yank it to the clipboard", params: map[string]ochazuke.Parameter{"target": target, "yank": {Type: "boolean", Description: "Copy to clipboard"}}, positional: []string{"target"}, handler: a.on(a.copy), output: "script"},
+		{name: "edit", description: "Open $EDITOR on the script; checkpoint its current contents for undo", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.edit)},
+		{name: "rename", description: "Rename immediately; duplicates receive a suffix", params: map[string]ochazuke.Parameter{"target": target, "name": param("New name")}, positional: []string{"target", "name"}, handler: a.on(a.rename)},
+		{name: "delete", description: "Hide a command immediately, retaining its script and undo history", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.delete)},
+		{name: "undo", description: "Undo the most recent rename, delete, edit or pin change", handler: a.undo},
+		{name: "pin", description: "Pin a command without moving its chronological position", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.pin(true))},
+		{name: "unpin", description: "Unpin a command", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.pin(false))},
+		{name: "star", description: "Toggle a command's pin", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.star)},
+		{name: "path", description: "Print a command's script path, or the storage directory", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.path, output: "path"},
+	}
+}
+
+func (a *App) newestFirst() bool { return a.r.Settings().String("list.order") == "newest-first" }
+
+func (a *App) target(c ochazuke.Ctx) (Command, error) {
+	t := ochazuke.StringArg(c.Args, "target", "")
+	if t == "" && c.Instance != nil {
+		t, _ = c.Instance.Data.(string)
+		if t == "" {
+			t = c.Instance.ID
+		}
+	}
+	if t == "" {
+		return Command{}, fmt.Errorf("name a command or displayed number")
+	}
+	return a.store.Resolve(t, a.newestFirst())
+}
+
+func (a *App) on(fn func(ochazuke.Ctx, Command) ochazuke.Result) ochazuke.AppHandler {
+	return func(c ochazuke.Ctx) ochazuke.Result {
+		row, err := a.target(c)
+		if err != nil {
+			return ochazuke.Failed(err)
+		}
+		return fn(c, row)
+	}
+}
+
+func result(v any, err error) ochazuke.Result {
+	if err != nil {
+		return ochazuke.Failed(err)
+	}
+	return ochazuke.Done(v)
+}
+func (a *App) refresh() {
+	if a.changed != nil {
+		a.changed()
+	}
+}
+
+func stringList(v any) []string {
+	switch v := v.(type) {
+	case []string:
+		return v
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, x := range v {
+			out = append(out, fmt.Sprint(x))
+		}
+		return out
+	case string:
+		var out []string
+		if json.Unmarshal([]byte(v), &out) == nil {
+			return out
+		}
+		if v != "" {
+			return []string{v}
+		}
+	}
+	return nil
+}
+
+func (a *App) add(c ochazuke.Ctx) ochazuke.Result {
+	script, hasScript := c.Args["script"].(string)
+	if file := ochazuke.StringArg(c.Args, "file", ""); file != "" {
+		b, e := os.ReadFile(file)
+		if e != nil {
+			return ochazuke.Failed(e)
+		}
+		script = string(b)
+	} else if !hasScript {
+		b, e := io.ReadAll(a.in)
+		if e != nil {
+			return ochazuke.Failed(e)
+		}
+		script = string(b)
+	}
+	author := stampAuthor(os.Getenv, "owner")
+	if name := ochazuke.StringArg(c.Args, "author", ""); name != "" {
+		author.Name = name
+	}
+	row, e := a.store.Add(Add{Name: ochazuke.StringArg(c.Args, "name", ""), Description: ochazuke.StringArg(c.Args, "desc", ""), Script: script, Cwd: ochazuke.StringArg(c.Args, "cwd", ""), Tags: stringList(c.Args["tags"]), Author: author})
+	a.refresh()
+	return result(row, e)
+}
+
+func age(at, now time.Time) string {
+	d := now.Sub(at)
+	if d < time.Minute {
+		return "now"
+	}
+	if d < time.Hour {
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	}
+	if d < 24*time.Hour {
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	}
+	return fmt.Sprintf("%dd", int(d.Hours()/24))
+}
+
+func (a *App) rows(filter string) ([]ocli.Row, error) {
+	cs, e := a.store.List()
+	if e != nil {
+		return nil, e
+	}
+	if a.newestFirst() {
+		slices.Reverse(cs)
+	}
+	out := []ocli.Row{}
+	filter = strings.ToLower(filter)
+	for i, c := range cs {
+		if !strings.Contains(strings.ToLower(c.Name+" "+c.Description+" "+strings.Join(c.Tags, " ")), filter) {
+			continue
+		}
+		text, e := a.store.Script(c)
+		if e != nil {
+			return nil, e
+		}
+		data := struct {
+			Command
+			Script string `json:"script"`
+		}{c, text}
+		name := c.Name
+		if c.Pinned {
+			name = "★ " + name
+		}
+		author := c.Author.Name
+		if c.Author.Harness != "" && c.Author.Harness != author {
+			author += "/" + c.Author.Harness
+		}
+		if c.Author.Pane != "" {
+			author += "@" + c.Author.Pane
+		}
+		out = append(out, ocli.Row{Noun: "cmd", ID: "cmd/" + c.ID, Label: c.Name, Data: data, Cells: []string{strconv.Itoa(i + 1), name, c.Description, age(c.Created, a.store.now()), author}})
+	}
+	return out, nil
+}
+
+func (a *App) list(c ochazuke.Ctx) ochazuke.Result {
+	rows, e := a.rows(ochazuke.StringArg(c.Args, "filter", ""))
+	return result(rows, e)
+}
+func (a *App) show(c ochazuke.Ctx, row Command) ochazuke.Result {
+	text, e := a.store.Script(row)
+	if e != nil {
+		return ochazuke.Failed(e)
+	}
+	if a.tui {
+		// The framework owns terminal suspension, restoration and job status.
+		pager := os.Getenv("PAGER")
+		if pager == "" {
+			pager = "more"
+		}
+		cmd := exec.CommandContext(background(), "sh", "-c", "exec "+pager+" \"$@\"", "o-cmds-view", row.Path)
+		return ochazuke.Foreground(cmd)
+	}
+	return ochazuke.Done(struct {
+		Command
+		Script string `json:"script"`
+	}{row, text})
+}
+
+func (a *App) execute(c ochazuke.Ctx, row Command) ochazuke.Result {
+	cmd := scriptCommand(background(), row, stringList(c.Args["args"]))
+	if a.tui {
+		return ochazuke.Foreground(cmd)
+	}
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = a.in, a.out, a.errOut
+	return result(nil, exitError(a.run(cmd)))
+}
+
+func (a *App) copy(c ochazuke.Ctx, row Command) ochazuke.Result {
+	text, e := a.store.Script(row)
+	if e != nil {
+		return ochazuke.Failed(e)
+	}
+	if yank, _ := c.Args["yank"].(bool); yank {
+		if e = clipboard(background(), text, a.run, a.errOut); e != nil {
+			return ochazuke.Failed(e)
+		}
+	}
+	return ochazuke.Done(map[string]string{"script": text})
+}
+
+func (a *App) edit(c ochazuke.Ctx, row Command) ochazuke.Result {
+	_, e := a.store.Change(row.ID, func(*Command, []Command) {})
+	if e != nil {
+		return ochazuke.Failed(e)
+	}
+	cmd := editorCommand(background(), row.Path)
+	if a.tui {
+		return ochazuke.Foreground(cmd).Then(func(ochazuke.Ctx, any, error) { a.refresh() })
+	}
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = a.in, a.out, a.errOut
+	e = a.run(cmd)
+	a.refresh()
+	return result(row, exitError(e))
+}
+
+func (a *App) change(row Command, fn func(*Command, []Command)) ochazuke.Result {
+	v, e := a.store.Change(row.ID, fn)
+	a.refresh()
+	return result(v, e)
+}
+func (a *App) rename(c ochazuke.Ctx, row Command) ochazuke.Result {
+	return a.change(row, func(v *Command, rows []Command) {
+		v.Name = uniqueName(ochazuke.StringArg(c.Args, "name", ""), rows, v.ID)
+	})
+}
+func (a *App) delete(_ ochazuke.Ctx, row Command) ochazuke.Result {
+	return a.change(row, func(v *Command, _ []Command) { v.Deleted = true })
+}
+func (a *App) pin(value bool) func(ochazuke.Ctx, Command) ochazuke.Result {
+	return func(_ ochazuke.Ctx, row Command) ochazuke.Result {
+		return a.change(row, func(v *Command, _ []Command) { v.Pinned = value })
+	}
+}
+func (a *App) star(_ ochazuke.Ctx, row Command) ochazuke.Result {
+	return a.change(row, func(v *Command, _ []Command) { v.Pinned = !v.Pinned })
+}
+func (a *App) undo(ochazuke.Ctx) ochazuke.Result {
+	v, e := a.store.Undo()
+	a.refresh()
+	return result(v, e)
+}
+func (a *App) path(c ochazuke.Ctx) ochazuke.Result {
+	if ochazuke.StringArg(c.Args, "target", "") == "" && c.Instance == nil {
+		return ochazuke.Done(a.store.Dir)
+	}
+	row, e := a.target(c)
+	if e != nil {
+		return ochazuke.Failed(e)
+	}
+	return ochazuke.Done(row.Path)
+}
+
+// JSON args used by catalog hosts share the same argument representation.
+func background() context.Context { return context.Background() }
