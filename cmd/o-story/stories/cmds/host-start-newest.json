@@ -1,0 +1,8 @@
+{
+  "name": "mounted commands select newest without reversing chronological rows",
+  "area": "cmds",
+  "skip": "gap: CatalogList has no initial selection policy; host chooses first row. Needs a general ochazuke catalog and host policy.",
+  "page": {"lists": [{"id": "commands", "rows": 3}]},
+  "script": [],
+  "expect": {"focus": "commands3"}
+}

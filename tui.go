@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -18,6 +19,16 @@ type page struct {
 	m     *ochazuke.Model
 	v     *ocli.PageView
 	dirty bool
+}
+
+type reloadMsg struct{}
+
+func (p *page) tick() tea.Cmd {
+	every := p.a.r.Settings().Duration("list.refresh")
+	if every <= 0 {
+		return nil
+	}
+	return tea.Tick(every, func(time.Time) tea.Msg { return reloadMsg{} })
 }
 
 func mountPage(a *App) (*page, error) {
@@ -103,8 +114,14 @@ func runTUI(a *App, args []string) error {
 	return e
 }
 
-func (p *page) Init() tea.Cmd { return tea.Batch(p.m.Init(), p.a.r.PendingCommands()) }
+func (p *page) Init() tea.Cmd { return tea.Batch(p.m.Init(), p.a.r.PendingCommands(), p.tick()) }
 func (p *page) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if _, ok := msg.(reloadMsg); ok {
+		if e := p.reload(false); e != nil {
+			p.a.r.UI().Status(e.Error())
+		}
+		return p, p.tick()
+	}
 	_, cmd := p.m.Update(msg)
 	if p.dirty {
 		p.dirty = false

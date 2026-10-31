@@ -229,3 +229,120 @@ func TestGlobalDataPreservesRunArgs(t *testing.T) {
 		t.Fatalf("args=%q dir=%q e=%v", args, dir, e)
 	}
 }
+
+func TestViewSmokeOwnsFrameworkAlias(t *testing.T) {
+	s := fixture(t)
+	addCommand(t, s, "smoke-command", "echo hello")
+	out, e := invoke(t, s, "", "view", "--smoke", "--width", "100", "--height", "20")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if !strings.Contains(out, "smoke-command") {
+		t.Fatalf("frame=%s", out)
+	}
+}
+
+func TestPageDetailUsesDeclaredFields(t *testing.T) {
+	s := fixture(t)
+	addCommand(t, s, "detail-command", "printf hello\n")
+	out, e := invoke(t, s, "", "view", "--smoke", "--width", "120", "--height", "26")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if strings.Contains(out, `"script":`) || !strings.Contains(out, "printf hello") {
+		t.Fatalf("detail rendered a JSON blob instead of fields:\n%s", out)
+	}
+}
+
+func TestPageFilterDeleteUndoRefreshAndOptOut(t *testing.T) {
+	s := fixture(t)
+	old := addCommand(t, s, "older", "echo old")
+	addCommand(t, s, "newer", "echo new")
+	var out bytes.Buffer
+	a, e := newApp(s, strings.NewReader(""), &out, &out)
+	if e != nil {
+		t.Fatal(e)
+	}
+	p, e := mountPage(a)
+	if e != nil {
+		t.Fatal(e)
+	}
+	press := func(code rune) {
+		_, cmd := p.Update(tea.KeyPressMsg{Code: code, Text: string(code)})
+		if cmd != nil {
+			deliver(t, p, cmd())
+		}
+	}
+	press('d')
+	press('d')
+	rows, e := s.List()
+	if e != nil || len(rows) != 1 || rows[0].ID != old.ID {
+		t.Fatalf("delete rows=%+v %v", rows, e)
+	}
+	press('u')
+	rows, e = s.List()
+	if e != nil || len(rows) != 2 {
+		t.Fatalf("undo rows=%+v %v", rows, e)
+	}
+	press('/')
+	press('n')
+	press('e')
+	press('w')
+	list := p.v.List(listID)
+	if list.Shown() != 1 {
+		t.Fatalf("filter shown=%d", list.Shown())
+	}
+	// A separately added command reaches an already-mounted standalone page.
+	addCommand(t, s, "newest", "echo newest")
+	if e = a.r.Settings().Set("list.refresh", time.Duration(0)); e != nil {
+		t.Fatal(e)
+	}
+	_, cmd := p.Update(reloadMsg{})
+	if cmd != nil {
+		t.Fatal("disabled refresh scheduled a timer")
+	}
+	if list.Shown() != 2 {
+		t.Fatalf("refresh filtered rows=%d", list.Shown())
+	}
+}
+
+func TestEditAndClipboardUseInjectedRunner(t *testing.T) {
+	s := fixture(t)
+	c := addCommand(t, s, "sample", "old bytes\n")
+	var out bytes.Buffer
+	a, e := newApp(s, strings.NewReader(""), &out, &out)
+	if e != nil {
+		t.Fatal(e)
+	}
+	t.Setenv("O_CMDS_CLIPBOARD", "fake-clipboard")
+	a.run = func(cmd *exec.Cmd) error {
+		b := new(bytes.Buffer)
+		if _, e := b.ReadFrom(cmd.Stdin); e != nil {
+			t.Fatal(e)
+		}
+		if b.String() != "old bytes\n" {
+			t.Fatalf("clipboard=%q", b.String())
+		}
+		return nil
+	}
+	if e = dispatch(a, []string{"cmd", "copy", c.Name, "--yank"}); e != nil {
+		t.Fatal(e)
+	}
+	a.run = func(cmd *exec.Cmd) error {
+		if got := cmd.Args[len(cmd.Args)-1]; got != c.Path {
+			t.Fatalf("editor path=%q", got)
+		}
+		return os.WriteFile(c.Path, []byte("changed bytes\n"), 0o600)
+	}
+	if e = dispatch(a, []string{"cmd", "edit", c.Name}); e != nil {
+		t.Fatal(e)
+	}
+	restored, e := s.Undo()
+	if e != nil {
+		t.Fatal(e)
+	}
+	text, e := s.Script(restored)
+	if e != nil || text != "old bytes\n" {
+		t.Fatalf("undo editor=%q %v", text, e)
+	}
+}

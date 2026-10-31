@@ -37,6 +37,7 @@ type verbSpec struct {
 	handler           ochazuke.AppHandler
 	rows              bool
 	output            string
+	cli               func(context.Context, []string) error
 }
 
 var columns = []ochazuke.Column{
@@ -63,6 +64,7 @@ func newApp(s *Store, in io.Reader, out, errOut io.Writer) (*App, error) {
 		ochazuke.Setting{Name: "list.order", Type: ochazuke.SettingString, Default: "oldest-first", Enum: []string{"oldest-first", "newest-first"}, Description: "Command order, including numbered CLI targets"},
 		ochazuke.Setting{Name: "list.start-newest", Type: ochazuke.SettingBoolean, Default: true, Description: "Start the standalone page on the newest command"},
 		ochazuke.Setting{Name: "view.detail", Type: ochazuke.SettingBoolean, Default: true, Description: "Show the script and metadata beside the command list"},
+		ochazuke.Setting{Name: "list.refresh", Type: ochazuke.SettingDuration, Default: 2 * time.Second, Description: "Reload the standalone list for agent additions; 0 disables polling"},
 	); err != nil {
 		return nil, err
 	}
@@ -124,7 +126,7 @@ func (a *App) specs() []verbSpec {
 		{name: "add", description: "Record a shell script, including an empty or unassociated one", params: map[string]ochazuke.Parameter{"name": param("Name; duplicates receive a suffix"), "desc": param("Description"), "file": param("Read script from file; otherwise script or stdin"), "script": param("Script text"), "cwd": param("Working directory; absence is allowed"), "tags": {Type: "array", Description: "Tags"}, "author": param("Author name; defaults to agent environment or owner")}, handler: a.add},
 		{name: "list", description: "List numbered commands; newest at the bottom by default", params: map[string]ochazuke.Parameter{"filter": param("Match name, description or tags")}, handler: a.list, rows: true, output: "table"},
 		{name: "show", description: "Show a command's script and metadata", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.show), output: "script"},
-		{name: "run", description: "Run with sh in the recorded cwd, streaming output and preserving exit status", params: map[string]ochazuke.Parameter{"target": target, "args": {Type: "array", Description: "Script arguments (CLI also accepts -- args...)"}}, positional: []string{"target"}, handler: a.on(a.execute)},
+		{name: "run", description: "Run with sh in the recorded cwd, streaming output and preserving exit status", params: map[string]ochazuke.Parameter{"target": target, "args": {Type: "array", Description: "Script arguments (CLI also accepts -- args...)"}}, positional: []string{"target"}, handler: a.on(a.execute), cli: a.runCLI},
 		{name: "copy", description: "Print the script, or --yank it to the clipboard", params: map[string]ochazuke.Parameter{"target": target, "yank": {Type: "boolean", Description: "Copy to clipboard"}}, positional: []string{"target"}, handler: a.on(a.copy), output: "script"},
 		{name: "edit", description: "Open $EDITOR on the script; checkpoint its current contents for undo", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.edit)},
 		{name: "rename", description: "Rename immediately; duplicates receive a suffix", params: map[string]ochazuke.Parameter{"target": target, "name": param("New name")}, positional: []string{"target", "name"}, handler: a.on(a.rename)},
@@ -205,7 +207,7 @@ func (a *App) add(c ochazuke.Ctx) ochazuke.Result {
 			return ochazuke.Failed(e)
 		}
 		script = string(b)
-	} else if !hasScript {
+	} else if !hasScript && !a.tui {
 		b, e := io.ReadAll(a.in)
 		if e != nil {
 			return ochazuke.Failed(e)
@@ -253,10 +255,17 @@ func (a *App) rows(filter string) ([]ocli.Row, error) {
 		if e != nil {
 			return nil, e
 		}
-		data := struct {
-			Command
-			Script string `json:"script"`
-		}{c, text}
+		// Match the object shape a catalog host obtains by decoding JSON.
+		// PageView's field renderer consumes maps rather than Go structs.
+		encoded, e := json.Marshal(c)
+		if e != nil {
+			return nil, e
+		}
+		var data map[string]any
+		if e = json.Unmarshal(encoded, &data); e != nil {
+			return nil, e
+		}
+		data["script"] = text
 		name := c.Name
 		if c.Pinned {
 			name = "★ " + name

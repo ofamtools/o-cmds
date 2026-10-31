@@ -85,14 +85,13 @@ func dispatch(a *App, args []string) error {
 			params = append(params, oden.Parameter{Name: name, Type: p.Type, Description: p.Description, Required: p.Required})
 		}
 		children = append(children, oden.Command{Name: v.name, Summary: v.description, Parameters: params, Usage: "[NAME|NUMBER] [--flags]", Run: func(ctx context.Context, words []string) error {
-			if v.name == "run" {
-				return a.runCLI(ctx, words)
+			if v.cli != nil {
+				return v.cli(ctx, words)
 			}
 			return a.verbCLI(sh, v, words)
 		}})
 	}
 	app.Add(oden.Command{Name: "cmd", Summary: "record, inspect and run saved shell commands", Children: children})
-	ocli.Mount(app, sh)
 	app.Add(oden.Command{Name: "view", Summary: "open the Commands page", Usage: "[--smoke] [--width N] [--height N]", Run: func(_ context.Context, args []string) error { return runTUI(a, args) }})
 	app.Add(oden.Command{Name: "mcp", Summary: "serve cmd_add, cmd_list and cmd_show over stdio (no execution tool)", Run: func(_ context.Context, args []string) error {
 		if len(args) > 0 {
@@ -100,6 +99,7 @@ func dispatch(a *App, args []string) error {
 		}
 		return a.mcp()
 	}})
+	ocli.Mount(app, sh)
 	app.HelpText += "\nGlobal: --data DIR overrides the command storage directory.\ncmd add reads stdin unless --file or --script supplies the script.\ncmd list is a table; --json '{}' requests catalog rows.\ncmd run NAME|NUMBER -- ARG... streams directly and returns the script's status."
 	return app.Run(context.Background())
 }

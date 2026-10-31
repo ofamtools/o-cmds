@@ -1,0 +1,7 @@
+{
+  "name": "o-cmds view --smoke opens the Commands page instead of the framework view noun",
+  "area": "cmds",
+  "skip": "scope: app CLI invocation is covered by TestViewSmokeOwnsFrameworkAlias; the shared fixture-only o-story runner has no o-cmds app harness",
+  "page": {"lists": [{"id": "commands", "title": "Commands", "rows": 1}]},
+  "script": []
+}

@@ -1,0 +1,7 @@
+{
+  "name": "standalone Commands detail uses declared fields and plain script content",
+  "area": "cmds",
+  "skip": "scope: app rendering is covered by TestPageDetailUsesDeclaredFields; the shared fixture-only o-story runner has no o-cmds app harness",
+  "page": {"lists": [{"id": "commands", "title": "Commands", "rows": 1}]},
+  "script": []
+}

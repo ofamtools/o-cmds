@@ -1,0 +1,7 @@
+{
+  "name": "mounted command runs and editors can request a terminal or pane",
+  "area": "cmds",
+  "skip": "gap: mtm and nabe extension proxies capture stdout and expose no terminal or pane execution capability. Needs a general catalog-host contract.",
+  "page": {"lists": [{"id": "commands", "rows": 1}]},
+  "script": ["enter"]
+}

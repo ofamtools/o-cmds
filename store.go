@@ -60,9 +60,6 @@ func stampAuthor(getenv func(string) string, fallback string) Author {
 	if a.Name == "" {
 		a.Name = a.Harness
 	}
-	if a.Name == "" && a.Pane != "" {
-		a.Name = "agent"
-	}
 	if a.Name == "" {
 		a.Name = fallback
 	}
