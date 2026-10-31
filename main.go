@@ -93,6 +93,8 @@ func dispatch(a *App, args []string) error {
 	}
 	app.Add(oden.Command{Name: "cmd", Summary: "record, inspect and run saved shell commands", Children: children})
 	app.Add(oden.Command{Name: "view", Summary: "open the Commands page", Usage: "[--smoke] [--width N] [--height N]", Run: func(_ context.Context, args []string) error { return runTUI(a, args) }})
+	app.Add(oden.Command{Name: "pick", Summary: "choose a command and print its script without running it", Usage: "[NAME|NUMBER]", Run: func(_ context.Context, args []string) error { return a.pickCLI(args) }})
+	app.Add(oden.Command{Name: "shell-init", Summary: "print an optional current-shell command function", Usage: "zsh|bash [--name NAME]", Run: func(_ context.Context, args []string) error { return shellInit(args, a.out, a.errOut) }})
 	app.Add(oden.Command{Name: "mcp", Summary: "serve cmd_add, cmd_list and cmd_show over stdio (no execution tool)", Run: func(_ context.Context, args []string) error {
 		if len(args) > 0 {
 			return errors.New("usage: o-cmds mcp")

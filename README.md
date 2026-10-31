@@ -91,6 +91,43 @@ list/search bindings; `?` shows help; `q` quits standalone. Rebind or unbind
 these through ochazuke's `bindings`/`config` verbs. No keys are switched on in
 application code.
 
+Optional shell convenience: `o-cmds pick` opens the same Commands page, with
+Enter choosing the script and exiting instead of running it. Escape cancels
+with non-zero status and no stdout. The UI renders on stderr, so stdout holds
+only the selected script. `o-cmds pick NAME|NUMBER` prints that script directly,
+using the same name/number resolver. Picking does not execute the script.
+
+To evaluate selected commands in your current Zsh session, add this optional
+line to `~/.zshrc` yourself:
+
+```sh
+eval "$(o-cmds shell-init zsh)"
+```
+
+For Bash, use `eval "$(o-cmds shell-init bash)"` in your shell startup file.
+This defines `oc`; `--name` changes the function name:
+
+```sh
+oc                          # pick, record in history, and evaluate here
+oc hello                    # evaluate a named command directly
+oc 2                        # evaluate a numbered command directly
+eval "$(o-cmds shell-init zsh --name choose_command)"
+choose_command hello        # use a different function name
+```
+
+The generated function calls `o-cmds pick`, records the chosen script in shell
+history, and evaluates it in the current shell, so `cd` and `export` persist.
+Cancellation returns the picker's status without evaluating or adding a history
+entry. Evaluation returns the script's status. The function preserves script
+text and trailing newlines; the shell's normal history settings control saving
+history to disk. It evaluates in the current directory; the stored `cwd`
+metadata applies to `cmd run`. Use a function name containing letters, digits
+and underscores, starting with a letter or underscore.
+
+Shell initialization is entirely optional. `o-cmds`, `cmd run`, the standalone
+TUI and MCP work without it. `shell-init` only prints the function; it edits no
+dotfiles, installs no hooks, and needs `o-cmds` on PATH when the function runs.
+
 ```sh
 ./o-cmds settings set list.order newest-first --yes
 ./o-cmds settings set list.start-newest false --yes

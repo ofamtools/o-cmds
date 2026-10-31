@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+* Add optional `pick` mode: print a named/numbered script or select one from
+  the Commands page, with clean stdout and non-zero Escape cancellation.
+* Add `shell-init zsh|bash [--name NAME]`, printing a current-shell function
+  that records and evaluates picked scripts; no dotfiles are changed.
+
 * Resolve saved command names through oden's prefix/descendant matcher, after
   exact names and numbered positions. Ambiguous targets list matching commands
   with their displayed numbers and never execute or mutate a command.

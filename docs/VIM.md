@@ -14,6 +14,8 @@ the page. Keys are application binding rows; the framework owns motions.
 | `:!cmd` | `:!` | Similar: Enter runs the selected saved script through sh, handing off the terminal standalone. |
 | `v` | `v` | Different: views a script with the configured pager; does not enter Vim's visual selection mode. |
 | `:edit` | `:edit` | Similar: opens the script in `$EDITOR`; editor controls its own writes. |
+| `inputlist()` | `inputlist()` | Similar: optional `pick` chooses one item or cancels; it returns script text on stdout rather than a Vim numeric result. |
+| Shell function initialization | n/a | A shell convenience for history and current-shell evaluation; no Vim interaction counterpart. |
 
 The app does not redefine framework spill/focus behavior, or install function
 key bindings. Delete and metadata changes take effect immediately; undo
