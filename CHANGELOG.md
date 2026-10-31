@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+* Adopt the chartreuse List and run logo with reproducible production SVGs and
+  byte-for-byte checks; add the family README header and an isolated VHS
+  demo tape with five seeded commands (recording pending).
+
 * Add six o-cmds logo concepts and an inline light/dark preview generator;
   leave production assets unselected.
 

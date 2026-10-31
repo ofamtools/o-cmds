@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="o-cmds">
+<title>o-cmds</title>
+<rect width="128" height="128" rx="28" fill="#20240f"/>
+<g>
+<path d="M24 32H88M24 56H72" stroke="#b5d43a" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><rect x="24" y="72" width="80" height="32" rx="8" fill="#b5d43a"/><path d="M40 88H80M72 80L80 88L72 96" fill="none" stroke="#f5f9e7" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+</svg>

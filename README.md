@@ -1,26 +1,55 @@
-# o-cmds
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
+    <img alt="o-cmds" src="assets/logo-light.svg" width="360">
+  </picture>
+  <br>
+  <a href="https://github.com/unixsuperhero/o-cmds/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/unixsuperhero/o-cmds"></a>
+  <a href="https://pkg.go.dev/github.com/unixsuperhero/o-cmds"><img alt="Go Reference" src="https://pkg.go.dev/badge/github.com/unixsuperhero/o-cmds.svg"></a>
+  <a href="go.mod"><img alt="Go version" src="https://img.shields.io/github/go-mod/go-version/unixsuperhero/o-cmds"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/unixsuperhero/o-cmds"></a>
+</p>
 
-Leave small shell scripts for yourself, inspect them, and run them by name or
-number. Commands list in creation order: **the newest is closest to the bottom**.
-Adding a duplicate name records another command with a suffix (`hello-2`, etc.).
-Empty scripts and missing descriptions or working directories are accepted.
+<p align="center">Agents leave small scripts; you list, inspect and run them, with the newest at the bottom.</p>
+
+<p align="center"><img alt="List saved commands, run one by number, then preview and run one in the TUI" src="assets/demo.gif" width="720"></p>
+
+`o-cmds` keeps shell scripts for the owner to inspect and run by name or number.
+Agents can add them through the CLI or MCP. Commands list in creation order:
+**the newest is closest to the bottom**. Adding a duplicate name records another
+command with a suffix (`hello-2`, etc.). Empty scripts and missing descriptions
+or working directories are accepted.
 
 `o-cmds` is an o-family extension: oden dispatches the CLI, ochazuke supplies the
 TUI, settings, bindings, and catalog. An `o-cmds` executable on PATH is discoverable
 by the family's `o` and `mtm` commands, just like `o-gh` or `o-git`.
 
+Install with the Go version in [go.mod](go.mod) or newer:
+
 ```sh
-go build -o o-cmds .
-printf 'printf "hello %%s\\n" "$1"\n' | ./o-cmds cmd add --name hello --desc 'Say hello'
-./o-cmds cmd add --file ./some-script.sh --name inspect --cwd /path/to/project
-./o-cmds cmd list
-./o-cmds cmd show hello
-./o-cmds cmd run hello -- 'Ada Lovelace'
-./o-cmds cmd run 2
-./o-cmds                         # standalone TUI, selected on newest
-./o-cmds catalog                 # JSON catalog for mtm/nabe
-./o-cmds view --smoke             # render one frame without a terminal
+go install github.com/unixsuperhero/o-cmds@latest
 ```
+
+With the installed binary on PATH:
+
+```sh
+printf 'printf "hello %%s\\n" "$1"\n' | o-cmds cmd add --name hello --desc 'Say hello'
+printf 'pwd\n' | o-cmds cmd add --name where --desc 'Show the current directory'
+o-cmds cmd list
+o-cmds cmd show hello
+o-cmds cmd run hello -- 'Ada Lovelace'
+o-cmds cmd run 2                 # names or displayed numbers: NAME|N
+o-cmds                           # standalone TUI, selected on newest
+o-cmds pick hello                # print a script without running it
+o-cmds pick                      # choose a script in the TUI
+o-cmds shell-init zsh            # print an optional current-shell helper
+o-cmds mcp                       # serve add/list/show over stdio JSON-RPC
+```
+
+Use `cmd add --file ./some-script.sh --name inspect --cwd /path/to/project`
+to record a file and its working directory. `o-cmds catalog` prints the JSON
+catalog for mtm/nabe; `o-cmds view --smoke` renders one frame without a terminal.
+The [demo tape](docs/vhs/README.md) records the header animation.
 
 `cmd list` prints numbered columns: name, description, age, author. Numbers are
 positions in the current order; filtering preserves the unfiltered numbers.
@@ -39,22 +68,22 @@ The pinned oden v0.1.1 supports exact/prefix matching only. Dash-segment forms
 extension; they are not implemented by a separate app matcher.
 
 ```sh
-./o-cmds cmd show 1
-./o-cmds cmd copy hello            # print the exact script bytes
-./o-cmds cmd copy hello --yank     # also copy to the clipboard
-EDITOR='code --wait' ./o-cmds cmd edit hello
-./o-cmds cmd rename hello greeting
-./o-cmds cmd pin greeting          # show a star, keep chronological position
-./o-cmds cmd star greeting         # toggle the pin
-./o-cmds cmd unpin greeting
-./o-cmds cmd delete greeting       # hide; keep script and history
-./o-cmds cmd undo                  # restore the most recent change
-./o-cmds cmd path greeting         # script path
-./o-cmds cmd path                  # storage directory
-./o-cmds cmd list --filter deploy
-./o-cmds cmd list --json '{}'      # catalog rows, including script/metadata
-./o-cmds cmd list --format table   # framework table output
-./o-cmds cmd add --name report --script 'pwd' --tags '["work","daily"]'
+o-cmds cmd show 1
+o-cmds cmd copy hello            # print the exact script bytes
+o-cmds cmd copy hello --yank     # also copy to the clipboard
+EDITOR='code --wait' o-cmds cmd edit hello
+o-cmds cmd rename hello greeting
+o-cmds cmd pin greeting          # show a star, keep chronological position
+o-cmds cmd star greeting         # toggle the pin
+o-cmds cmd unpin greeting
+o-cmds cmd delete greeting       # hide; keep script and history
+o-cmds cmd undo                  # restore the most recent change
+o-cmds cmd path greeting         # script path
+o-cmds cmd path                  # storage directory
+o-cmds cmd list --filter deploy
+o-cmds cmd list --json '{}'      # catalog rows, including script/metadata
+o-cmds cmd list --format table   # framework table output
+o-cmds cmd add --name report --script 'pwd' --tags '["work","daily"]'
 ```
 
 Runs use `sh SCRIPT ARG...`, with the recorded cwd if present. Otherwise they
@@ -147,10 +176,10 @@ TUI and MCP work without it. `shell-init` only prints the function; it edits no
 dotfiles, installs no hooks, and needs `o-cmds` on PATH when the function runs.
 
 ```sh
-./o-cmds settings set list.order newest-first --yes
-./o-cmds settings set list.start-newest false --yes
-./o-cmds settings set view.detail false --yes
-./o-cmds settings set list.refresh 0s --yes
+o-cmds settings set list.order newest-first --yes
+o-cmds settings set list.start-newest false --yes
+o-cmds settings set view.detail false --yes
+o-cmds settings set list.refresh 0s --yes
 ```
 
 Defaults: `list.order=oldest-first`, `list.start-newest=true`,
@@ -188,3 +217,5 @@ Checks: `make check` runs gofmt validation, vet and the new app's Go tests;
 `make test` runs tests; `make build` builds locally. Builds set `GOWORK=off`,
 `GOFLAGS='-trimpath -p=2'` and `GOMAXPROCS=3`, under `nice -n 15`. Test temporary
 HOME/XDG paths are isolated; `TEST_TMP` defaults to `/tmp/o-cmds-lane/tests`.
+
+Licensed under the [MIT License](LICENSE).

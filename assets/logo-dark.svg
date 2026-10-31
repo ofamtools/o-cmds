@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 408 96" width="408" height="96" role="img" aria-label="o-cmds">
+<title>o-cmds</title>
+<g transform="translate(-20 -16)">
+<path d="M24 32H88M24 56H72" stroke="#b5d43a" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><rect x="24" y="72" width="80" height="32" rx="8" fill="#b5d43a"/><path d="M40 88H80M72 80L80 88L72 96" fill="none" stroke="#f5f9e7" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<path d="M132 44a20 20 0 1 0 0.01 0M167 64h16M232.1 49.9A20 20 0 1 0 232.1 78.1M247.1 44V84M247.1 57a13 13 0 0 1 26 0V84M273.1 57a13 13 0 0 1 26 0V84M334.1 44a20 20 0 1 0 0.01 0M354.1 18V84M399.1 50A15 10 0 0 0 384.1 44A15 10 0 0 0 384.1 64A15 10 0 0 1 384.1 84A15 10 0 0 1 369.1 78" fill="none" stroke="#f5f9e7" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

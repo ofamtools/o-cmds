@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
-"""Render o-cmds logo candidates without publishing assets.
+"""Write the selected chartreuse List and run logo to assets/.
 
 Copied and adapted from o-proj/docs/logo/build.py. Its family wordmark and
 layout are retained; d comes from oden, s from o-slack. Marks use the 8-unit
 grid, a 128 tile with rx 28, and the family's x=112 wordmark origin.
 
-    python3 docs/logo/build.py --preview /tmp/o-cmds-logo/artifacts
+    python3 docs/logo/build.py
     python3 docs/logo/build.py --check
+    python3 docs/logo/build.py --preview /tmp/o-cmds-logo/artifacts
 
-The default output is /tmp/o-cmds-logo/artifacts. SVG and an entirely inline
-HTML contact sheet are always written. PNGs are added if rsvg-convert is on
-PATH. The default leaves assets/ untouched. Python standard library only.
+The default writes icon.svg, logo-light.svg and logo-dark.svg. --check compares
+their exact bytes and checks the inherited family wordmarks. --preview keeps
+the original concept sheet reproducible, without changing production assets;
+PNGs are added if rsvg-convert is on PATH. Python standard library only.
 """
 import argparse
 import colorsys
@@ -21,6 +23,7 @@ import subprocess
 import sys
 
 TOOL = "o-cmds"
+ASSETS = pathlib.Path(__file__).resolve().parents[2] / "assets"
 R = 'stroke-linecap="round" stroke-linejoin="round"'
 
 
@@ -172,9 +175,14 @@ def logo(theme, mark, palette):
 
 
 def check():
-    """The glyph table must redraw ochazuke's and matomeru's wordmarks exactly."""
+    """Check production bytes and inherited family wordmarks."""
     import re
     ok = True
+    for name, svg in production().items():
+        path = ASSETS / name
+        same = path.exists() and path.read_bytes() == svg.encode("utf-8")
+        ok &= same
+        print(f"{name}: {'same' if same else 'MISSING or DIFFERENT'}")
     for fam in ("ochazuke", "matomeru"):
         f = pathlib.Path.home() / f"proj/{fam}/assets/logo-light.svg"
         if not f.exists():
@@ -192,6 +200,13 @@ def check():
         ok &= same
         print(f"{fam}: {'same' if same else 'DIFFERENT'} wordmark ({w} wide)")
     return ok
+
+
+def production():
+    p = PALETTES["chartreuse"]
+    return {"icon.svg": icon(run_list, p),
+            **{f"logo-{theme}.svg": logo(theme, run_list, p)
+               for theme in ("light", "dark")}}
 
 
 def variants():
@@ -262,12 +277,20 @@ footer{padding:28px 0;color:#606954;max-width:850px}@media(max-width:760px){main
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--check", action="store_true", help="compare inherited family wordmarks")
-    parser.add_argument("--preview", type=pathlib.Path, default=pathlib.Path("/tmp/o-cmds-logo/artifacts"), metavar="DIR")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--check", action="store_true", help="compare production assets and inherited family wordmarks")
+    mode.add_argument("--preview", type=pathlib.Path, metavar="DIR", help="render the original concept sheet")
     args = parser.parse_args()
     if args.check:
         sys.exit(0 if check() else 1)
-    preview(args.preview)
+    if args.preview is not None:
+        preview(args.preview)
+        return
+    ASSETS.mkdir(exist_ok=True)
+    for name, svg in production().items():
+        path = ASSETS / name
+        path.write_bytes(svg.encode("utf-8"))
+        print(path)
 
 
 if __name__ == "__main__":
