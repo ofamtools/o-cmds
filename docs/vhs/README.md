@@ -27,9 +27,15 @@ All run in the fixture's project directory. The seed refuses an existing data
 directory so another run cannot silently append duplicates. The fixture stays
 in `/tmp` for inspection; each recording creates a new one.
 
-The tape has been prepared and its CLI/TUI steps checked without running VHS.
-The coordinator records and reviews the GIF before publishing the README;
-`assets/demo.gif` is intentionally pending that recording.
+To re-record, run `vhs docs/vhs/demo.tape` from the repository root. It
+writes `assets/demo.gif` (about 13 seconds, under 1 MB). Each run builds and
+seeds a new fixture under `/tmp/o-cmds-brand`, so it never reads or writes the
+installed binary, the owner's data or config. Look at a few frames before
+committing a new GIF.
+
+The hidden setup waits for the `$ ` prompt with `Wait+Line@120s /^\$ ?$/`.
+VHS trims the trailing space from the line it matches, so a pattern that
+requires the space (`/\$ $/`) never matches and the recording times out.
 
 To adapt the family demo, keep `Output assets/demo.gif` and the isolated setup,
 then replace the seed commands and key sequence. Keep the window small and the

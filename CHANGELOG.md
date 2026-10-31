@@ -4,7 +4,7 @@
 
 * Adopt the chartreuse List and run logo with reproducible production SVGs and
   byte-for-byte checks; add the family README header and an isolated VHS
-  demo tape with five seeded commands (recording pending).
+  demo tape with five seeded commands and the recorded `assets/demo.gif`.
 
 * Add six o-cmds logo concepts and an inline light/dark preview generator;
   leave production assets unselected.
