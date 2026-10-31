@@ -49,7 +49,7 @@ Known host gaps, verified from the current local APIs:
   `list.start-newest` control the standalone page; hosts own their own timers
   and cursor policy.
 
-Skipped o-story fixtures under `cmd/o-story/stories/cmds/` record the earlier host
+Skipped o-story fixtures under `cmd/o-story/stories/cmds/` record the host
 gaps for a coordinator's library follow-up. Two more fixtures record app CLI
 and rendering regressions covered by executable Go tests; the shared o-story
 runner has no app harness. The six `script-*.json` stories now execute through

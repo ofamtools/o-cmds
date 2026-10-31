@@ -1,0 +1,7 @@
+{
+  "name": "mounted commands preserve script layout and view inside the host UI",
+  "area": "cmds",
+  "skip": "gap: external catalog hosts do not register the app script detail factory, and captured CLI show output cannot open the app modal. Needs a shared text detail and viewer contract in ochazuke and hosts.",
+  "page": {"lists": [{"id": "commands", "rows": 1}]},
+  "script": ["v"]
+}
