@@ -14,6 +14,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/unixsuperhero/oden"
 	"golang.org/x/sys/unix"
 )
 
@@ -298,8 +299,37 @@ func resolve(rows []Command, target string) (Command, error) {
 			return c, nil
 		}
 	}
-	if n, e := strconv.Atoi(target); e == nil && n > 0 && n <= len(rows) {
-		return rows[n-1], nil
+	if n, e := strconv.Atoi(target); e == nil {
+		if n > 0 && n <= len(rows) {
+			return rows[n-1], nil
+		}
+		return Command{}, fmt.Errorf("command number %q not found", target)
+	}
+	commands := make([]*oden.Command, 0, len(rows))
+	for _, row := range rows {
+		commands = append(commands, &oden.Command{Name: row.Name})
+	}
+	match := oden.NewCatalog("cmd", commands, nil, nil).Resolve(target)
+	if match.Resolved() {
+		for _, row := range rows {
+			if row.Name == match.Entry.Name {
+				return row, nil
+			}
+		}
+	}
+	if match.Ambiguous {
+		matched := make(map[string]bool, len(match.Candidates))
+		for _, candidate := range match.Candidates {
+			matched[candidate.Name] = true
+		}
+		var message strings.Builder
+		fmt.Fprintf(&message, "command %q is ambiguous; matching commands:", target)
+		for i, row := range rows {
+			if matched[row.Name] {
+				fmt.Fprintf(&message, "\n  %d  %s", i+1, row.Name)
+			}
+		}
+		return Command{}, fmt.Errorf("%s", message.String())
 	}
 	return Command{}, fmt.Errorf("command %q not found", target)
 }

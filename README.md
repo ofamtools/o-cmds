@@ -27,6 +27,17 @@ positions in the current order; filtering preserves the unfiltered numbers.
 Names take precedence over numeric positions. Stable `cmd/ID` targets from JSON
 rows remain usable across renames and changes to the list.
 
+Every command-targeting verb and MCP `cmd_show` also accepts a unique name
+prefix: `cmd show play` can select `play-o-json-tutorials`. Matching reuses
+oden's resolver, including its descendant rule: a prefix matching both `play`
+and `play-tutorials` selects `play`. Exact names and valid numbered positions
+take precedence. Ambiguous input prints the matching commands with their
+current list numbers and returns a failure; it never runs or changes a command.
+
+The pinned oden v0.1.1 supports exact/prefix matching only. Dash-segment forms
+(`p-o-j-t`, `pojt`) and last-resort word fragments require a shared oden matcher
+extension; they are not implemented by a separate app matcher.
+
 ```sh
 ./o-cmds cmd show 1
 ./o-cmds cmd copy hello            # print the exact script bytes
