@@ -1,6 +1,6 @@
 package main
 
-import ocli "github.com/unixsuperhero/ochazuke/cli"
+import ocli "ofam.dev/ochazuke/cli"
 
 // mountHostPage mounts the commands page the way an external catalog host
 // (mtm, nabe) does: the page spec as published in the catalog document, and

@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	ocli "github.com/unixsuperhero/ochazuke/cli"
+	ocli "ofam.dev/ochazuke/cli"
 )
 
 // Detail styles of the standalone page (setting view.detail-style).

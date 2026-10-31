@@ -1,4 +1,4 @@
-module github.com/unixsuperhero/o-cmds
+module ofam.dev/o-cmds
 
 go 1.27.1
 
@@ -7,8 +7,8 @@ require (
 	github.com/charmbracelet/x/ansi v0.11.9
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/creack/pty v1.1.24
-	github.com/unixsuperhero/ochazuke v0.75.1
-	github.com/unixsuperhero/oden v0.1.1
+	ofam.dev/ochazuke v0.75.1
+	ofam.dev/oden v0.1.1
 	golang.org/x/sys v0.47.0
 )
 
