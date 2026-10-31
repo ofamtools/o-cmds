@@ -17,7 +17,7 @@ Set CursorBlink false
 Hide
 Type "mkdir -p /tmp/o-cmds-brand && export O_CMDS_DEMO=$(mktemp -d /tmp/o-cmds-brand/demo.XXXXXX) && GOTMPDIR=$O_CMDS_DEMO GOWORK=off GOFLAGS='-trimpath -p=2' GOMAXPROCS=3 nice -n 15 go build -o $O_CMDS_DEMO/o-cmds-bin . && source docs/vhs/seed.sh $O_CMDS_DEMO && unset PROMPT_COMMAND && export PS1='$ ' && clear"
 Enter
-Wait+Line@120s /\$ $/
+Wait+Line@120s /^\$ ?$/
 Show
 
 # Creation order: row 5 is the newest, at the bottom.
