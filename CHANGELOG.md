@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+* Add six o-cmds logo concepts and an inline light/dark preview generator;
+  leave production assets unselected.
+
 * Preview scripts with line numbers, preserved spacing and a compact metadata
   header; scroll the detail pane with Ctrl-D/Ctrl-U or hide it with view.detail.
 * View scripts in a scrollable in-app modal; cycle list.order with a binding
