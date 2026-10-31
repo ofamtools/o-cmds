@@ -14,8 +14,8 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/unixsuperhero/oden"
 	"golang.org/x/sys/unix"
+	"ofam.dev/oden"
 )
 
 // Command metadata lives beside an ordinary, owner-editable shell script.

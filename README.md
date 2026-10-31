@@ -4,10 +4,10 @@
     <img alt="o-cmds" src="assets/logo-light.svg" width="360">
   </picture>
   <br>
-  <a href="https://github.com/unixsuperhero/o-cmds/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/unixsuperhero/o-cmds"></a>
-  <a href="https://pkg.go.dev/github.com/unixsuperhero/o-cmds"><img alt="Go Reference" src="https://pkg.go.dev/badge/github.com/unixsuperhero/o-cmds.svg"></a>
-  <a href="go.mod"><img alt="Go version" src="https://img.shields.io/github/go-mod/go-version/unixsuperhero/o-cmds"></a>
-  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/unixsuperhero/o-cmds"></a>
+  <a href="https://github.com/ofamtools/o-cmds/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/ofamtools/o-cmds"></a>
+  <a href="https://pkg.go.dev/ofam.dev/o-cmds"><img alt="Go Reference" src="https://pkg.go.dev/badge/ofam.dev/o-cmds.svg"></a>
+  <a href="go.mod"><img alt="Go version" src="https://img.shields.io/github/go-mod/go-version/ofamtools/o-cmds"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/ofamtools/o-cmds"></a>
 </p>
 
 <p align="center">Agents leave small scripts; you list, inspect and run them, with the newest at the bottom.</p>
@@ -27,7 +27,7 @@ by the family's `o` and `mtm` commands, just like `o-gh` or `o-git`.
 Install with the Go version in [go.mod](go.mod) or newer:
 
 ```sh
-go install github.com/unixsuperhero/o-cmds@latest
+go install ofam.dev/o-cmds@latest
 ```
 
 With the installed binary on PATH:

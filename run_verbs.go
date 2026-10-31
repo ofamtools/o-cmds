@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/term"
-	"github.com/unixsuperhero/ochazuke"
+	"ofam.dev/ochazuke"
 )
 
 var runColumns = []ochazuke.Column{

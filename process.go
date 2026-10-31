@@ -11,7 +11,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/unixsuperhero/oden"
+	"ofam.dev/oden"
 )
 
 // Runner is the only boundary that executes user scripts, editors or clipboard

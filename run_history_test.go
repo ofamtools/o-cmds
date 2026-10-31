@@ -18,9 +18,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/term"
 	"github.com/creack/pty"
-	"github.com/unixsuperhero/ochazuke"
-	"github.com/unixsuperhero/oden"
 	"golang.org/x/sys/unix"
+	"ofam.dev/ochazuke"
+	"ofam.dev/oden"
 )
 
 func historyApp(t *testing.T, s *Store) (*App, *bytes.Buffer, *bytes.Buffer) {

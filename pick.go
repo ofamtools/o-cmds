@@ -6,8 +6,8 @@ import (
 	"io"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/unixsuperhero/ochazuke"
-	"github.com/unixsuperhero/oden"
+	"ofam.dev/ochazuke"
+	"ofam.dev/oden"
 )
 
 type picker struct {

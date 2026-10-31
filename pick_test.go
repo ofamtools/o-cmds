@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/unixsuperhero/ochazuke"
-	"github.com/unixsuperhero/oden"
+	"ofam.dev/ochazuke"
+	"ofam.dev/oden"
 )
 
 func TestPickEnterPrintsSelectedScript(t *testing.T) {
