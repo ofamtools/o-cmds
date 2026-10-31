@@ -35,11 +35,14 @@ func TestScriptStories(t *testing.T) {
 	for _, file := range files {
 		t.Run(filepath.Base(file), func(t *testing.T) {
 			var story struct {
-				Name     string
-				Commands []Add
-				Picker   bool
-				Settings map[string]any
-				Runs     []struct {
+				Name       string
+				Commands   []Add
+				Picker     bool
+				Foreground bool
+				Env        map[string]string
+				Inputs     map[string]string
+				Settings   map[string]any
+				Runs       []struct {
 					Command, Stdout, Stderr string
 					ExitCode                int
 				}
@@ -47,6 +50,8 @@ func TestScriptStories(t *testing.T) {
 				Expect []struct {
 					After                            int
 					Contains, Lacks                  []string
+					RunInput, RunKind                string
+					RunCount                         *int
 					Selected                         string
 					Order                            []string
 					Modal                            *bool
@@ -62,6 +67,24 @@ func TestScriptStories(t *testing.T) {
 				t.Fatal(e)
 			}
 			s := fixture(t)
+			for key, value := range story.Env {
+				t.Setenv(key, value)
+			}
+			if len(story.Inputs) > 0 {
+				dir := filepath.Join(s.Dir, "inputs")
+				if e := os.MkdirAll(dir, 0o700); e != nil {
+					t.Fatal(e)
+				}
+				for name, text := range story.Inputs {
+					if filepath.Base(name) != name {
+						t.Fatal("invalid story input name")
+					}
+					if e := os.WriteFile(filepath.Join(dir, name), []byte(text), 0o600); e != nil {
+						t.Fatal(e)
+					}
+				}
+				t.Chdir(dir)
+			}
 			for _, c := range story.Commands {
 				if _, e = s.Add(c); e != nil {
 					t.Fatal(e)
@@ -102,7 +125,12 @@ func TestScriptStories(t *testing.T) {
 				t.Fatal(e)
 			}
 			p.m.Width, p.m.Height = 120, 26
-			p.m.Foreground = func(ochazuke.ForegroundMsg) tea.Cmd { t.Fatal("viewer attempted a foreground process"); return nil }
+			p.m.Foreground = func(msg ochazuke.ForegroundMsg) tea.Cmd {
+				if !story.Foreground {
+					t.Fatal("viewer attempted a foreground process")
+				}
+				return func() tea.Msg { return msg.Done(a.run(msg.Cmd)) }
+			}
 			check := func(after int) {
 				frame := ansi.Strip(p.m.View().Content)
 				for _, want := range story.Expect {
@@ -117,6 +145,18 @@ func TestScriptStories(t *testing.T) {
 					for _, text := range want.Lacks {
 						if strings.Contains(frame, text) {
 							t.Fatalf("after %d unexpectedly contains %q:\n%s", after, text, frame)
+						}
+					}
+					if want.RunCount != nil {
+						runs, e := s.Runs("")
+						if e != nil || len(runs) != *want.RunCount {
+							t.Fatalf("after %d runs=%v err=%v", after, runs, e)
+						}
+						if len(runs) > 0 && want.RunKind != "" {
+							r, e := s.ReadRun(runs[len(runs)-1].ID)
+							if e != nil || r.Stdin.Kind != want.RunKind || r.Input != want.RunInput || r.Stdout != want.RunInput {
+								t.Fatalf("after %d stdin run=%+v err=%v", after, r, e)
+							}
 						}
 					}
 					if want.Selected != "" {
@@ -170,7 +210,10 @@ func TestScriptStories(t *testing.T) {
 			}
 			check(0)
 			for i, key := range story.Script {
-				p.Update(keytest.Msg(key, false, false))
+				_, cmd := p.Update(keytest.Msg(key, false, false))
+				if cmd != nil {
+					deliver(t, p, cmd())
+				}
 				check(i + 1)
 			}
 		})

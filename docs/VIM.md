@@ -18,7 +18,10 @@ the page. Keys are application binding rows; the framework owns motions.
 | `gg` / `G` | `gg`, `G` | Similar: modal `g` / `G` scrolls to beginning/end; beginning uses one `g`, without a text cursor. |
 | `q` / Escape | `q`, `<Esc>` | Different: closes the script modal and restores the list, rather than recording a macro or leaving a Vim mode. |
 | `o` | `o` | Different: cycles list.order while preserving selection, rather than inserting a new text line. |
-| `:edit` | `:edit` | Similar: opens the script in `$EDITOR`; editor controls its own writes. |
+| `:write !command` | `:write_c` | Similar: g e edits an empty file then pipes the whole file to a saved script; g i chooses an existing file. Vim can send a buffer range. Output is streamed/captured, never written over the buffer. |
+| `:range!command` | `:range!`, `filter` | Different: explicit stdin runs a saved script without replacing buffer contents. |
+| `.` after a filter | `filter`, `.` | Similar: g r repeats the latest run with its args/cwd/input source; files are reopened, edited snapshots reused. |
+| `:edit` | `:edit` | Similar: opens the script in `$VISUAL` or `$EDITOR`; editor controls its own writes. |
 | `inputlist()` | `inputlist()` | Similar: optional `pick` chooses one item or cancels; it returns script text on stdout rather than a Vim numeric result. |
 | Shell function initialization | n/a | A shell convenience for history and current-shell evaluation; no Vim interaction counterpart. |
 | `:history` | `:history`, `:history-indexing` | Similar: run list shows numbered history with newest at bottom. Ours records execution and separate streams, and numbers shift after deletion/retention; Vim's history indices remain fixed. |

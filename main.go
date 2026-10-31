@@ -171,6 +171,9 @@ func (a *App) runCLI(ctx context.Context, args []string) error {
 	target := fs.String("target", "", "Command name, number or ID")
 	raw := fs.String("json", "{}", "Host arguments")
 	encoded := fs.String("args", "", "JSON array of script arguments")
+	inputPath := fs.String("stdin", "", "File to use as stdin")
+	inputKind := fs.String("stdin-kind", "file", "Input provenance: file or edited (retained for reruns)")
+	editInput := fs.Bool("edit-stdin", false, "Edit an empty stdin buffer")
 	fs.Bool("yes", false, "Host compatibility")
 	// flag accepts flags before positional words; move one target word to
 	// the end, leaving option values paired and everything after -- intact.
@@ -183,7 +186,7 @@ func (a *App) runCLI(ctx context.Context, args []string) error {
 			continue
 		}
 		flags = append(flags, arg)
-		if !strings.Contains(arg, "=") && arg != "--yes" {
+		if !strings.Contains(arg, "=") && arg != "--yes" && arg != "--edit-stdin" && arg != "--help" && arg != "-h" {
 			i++
 			if i >= len(args) {
 				return fmt.Errorf("%s needs a value", arg)
@@ -198,8 +201,11 @@ func (a *App) runCLI(ctx context.Context, args []string) error {
 		return &oden.ExitError{Code: 2}
 	}
 	var host struct {
-		Target string   `json:"target"`
-		Args   []string `json:"args"`
+		Target    string   `json:"target"`
+		Args      []string `json:"args"`
+		Stdin     string   `json:"stdin"`
+		EditStdin bool     `json:"edit-stdin"`
+		StdinKind string   `json:"stdin-kind"`
 	}
 	if e := json.Unmarshal([]byte(*raw), &host); e != nil {
 		return e
@@ -207,10 +213,8 @@ func (a *App) runCLI(ctx context.Context, args []string) error {
 	if *target == "" {
 		*target = host.Target
 	}
-	if len(positional) > 1 {
-		return errors.New("usage: cmd run NAME|NUMBER [-- args...]")
-	}
-	if len(positional) == 1 {
+	if len(positional) >= 1 {
+		argv = append(append([]string{}, positional[1:]...), argv...)
 		*target = positional[0]
 	}
 	if *encoded != "" {
@@ -226,21 +230,59 @@ func (a *App) runCLI(ctx context.Context, args []string) error {
 	if e != nil {
 		return e
 	}
-	return a.runRecorded(ctx, row, argv)
+	if *inputPath == "" {
+		*inputPath = host.Stdin
+	}
+	if *editInput || host.EditStdin {
+		if *inputPath != "" {
+			return errors.New("--stdin and --edit-stdin are mutually exclusive")
+		}
+		return a.runEdited(ctx, row, argv)
+	}
+	if host.StdinKind != "" && *inputKind == "file" {
+		*inputKind = host.StdinKind
+	}
+	input, err := a.openInput(*inputPath, *inputKind)
+	if err != nil {
+		return err
+	}
+	return a.runRecordedInput(ctx, row, argv, input)
 }
 
-func (a *App) runRecorded(ctx context.Context, row Command, argv []string) error {
+func (a *App) runEdited(ctx context.Context, row Command, argv []string) error {
+	path, err := a.newInputBuffer()
+	if err != nil {
+		return err
+	}
+	defer os.Remove(path)
+	editor := editorCommand(ctx, path)
+	editor.Stdin, editor.Stdout, editor.Stderr = a.in, a.out, a.errOut
+	if err := editedContent(path, a.run(editor)); err != nil {
+		return err
+	}
+	input, err := a.openInput(path, "edited")
+	if err != nil {
+		return err
+	}
+	return a.runRecordedInput(ctx, row, argv, input)
+}
+
+func (a *App) runRecordedInput(ctx context.Context, row Command, argv []string, input *runInput) error {
+	defer input.close()
 	// A terminal sends these to the whole foreground process group. Let the
 	// script receive them while the recorder survives to save its result.
 	interrupts := make(chan os.Signal, 1)
 	signal.Notify(interrupts, os.Interrupt, syscall.SIGQUIT)
 	defer signal.Stop(interrupts)
 	cmd := scriptCommand(ctx, row, argv)
-	finish, e := a.prepareRun(cmd, row, argv, "cli")
+	finish, e := a.prepareRun(cmd, row, argv, "cli", input)
 	if e != nil {
 		return e
 	}
 	cmd.Stdin = a.in
+	if input != nil {
+		cmd.Stdin = input.file
+	}
 	if cmd.Stdout == nil {
 		cmd.Stdout, cmd.Stderr = a.out, a.errOut
 	}

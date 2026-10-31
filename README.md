@@ -87,10 +87,52 @@ o-cmds cmd add --name report --script 'pwd' --tags '["work","daily"]'
 ```
 
 Runs use `sh SCRIPT ARG...`, with the recorded cwd if present. Otherwise they
-inherit the caller's directory. Stdin remains connected, stdout and stderr stream live, and
+inherit the caller's directory. Stdin remains connected unless an explicit input
+source is chosen; stdout and stderr stream live, and
 the CLI returns the script's exit status. A missing recorded directory does
 not prevent saving; running reports the directory error. Script bytes are
 preserved, including when the script is empty or has no trailing newline.
+
+## Stdin from a file or editor
+
+```sh
+o-cmds cmd run hello --stdin ./input.txt -- argument
+o-cmds cmd run hello --edit-stdin -- argument
+o-cmds cmd rerun hello             # latest run, including its input source
+o-cmds run in 1                    # exact retained input bytes
+```
+
+On a command row, `g i` opens ochazuke's file chooser at the caller's current
+working directory. Its browse, recent and typed-path sources provide navigation
+and path completion; recent includes file inputs from retained runs as well as
+paths picked this session. Escape cancels. `g e` opens an empty private temp file
+in `$VISUAL`, else `$EDITOR`, else `vi`. Editor commands may include arguments
+(such as `code --wait`). Save and quit to run with that file as stdin. An empty
+buffer or a nonzero editor exit cancels with a message and creates no run.
+The editor controls its own writes; there is no extra app save step. Buffers
+always start empty; automatic seeding is not enabled. `view.stdin=false` hides
+the picker/editor binding hints and disables those TUI flows; CLI access remains.
+
+`g r` repeats the focused command's latest recorded run. Both that action and
+`run rerun RUN` reuse the original arguments, cwd and stdin source: file input
+reopens the same absolute path (so it sees current file contents), while edited
+input reuses the run's retained buffer. A missing source fails clearly. A
+truncated edited buffer cannot be rerun, since its original bytes are no longer
+available. `view.runs=false` also hides and disables the `g r` history action.
+The catalog's `cmd.run` supports `stdin`, `edit-stdin`, and `stdin-kind`
+(`file` by default; `edited` snapshots an existing buffer for reuse).
+
+Explicit inputs must be regular files. They replace the script's stdin: an
+interactive script cannot read the keyboard through stdin while consuming one.
+Without either option, stdin stays inherited. The editor still gets the terminal
+before the script starts. Input paths are resolved from the caller's directory,
+independently of the script's recorded cwd. Temporary editor files are created
+as `0600` under the data directory's private `tmp/` and removed after use.
+
+Compared with Vim: this resembles writing a buffer to `:write !command`
+(`:help :write_c`); o-cmds sends the whole saved buffer or chosen file and records
+the run, while Vim can send a selected range. Output is streamed and captured
+rather than replacing the edited buffer as `:range!` would.
 
 ## Run history
 
@@ -103,11 +145,11 @@ separate things.
 ```sh
 o-cmds cmd runs hello             # command name, abbreviation or number
 o-cmds run list                   # all runs, including deleted commands
-o-cmds run show 1                 # metadata and labelled stdout/stderr
+o-cmds run show 1                 # metadata and labelled stdin/stdout/stderr
 o-cmds run out 1                  # exact captured stdout, for piping
 o-cmds run err 1                  # exact captured stderr, for piping
-o-cmds run rerun 1                # current script, original args and cwd
-o-cmds run delete 1               # remove record and both streams
+o-cmds run rerun 1                # current script, original args, cwd and input
+o-cmds run delete 1               # remove record and captured streams
 o-cmds cmd runs-clear hello       # remove all of this command's runs
 ```
 
@@ -115,10 +157,21 @@ Runs list oldest first, newest at the bottom, independently of `list.order`.
 Their numbers refer to the global run list, including when filtered by command;
 numbers change after pruning/deletion. A stable `run/ID`, exact ID or unique ID
 prefix also works. Ambiguous prefixes fail without executing anything.
-`run list NAME|N` filters by command; `run show/out/err/delete/rerun` accept
+`run list NAME|N` filters by command; `run show/in/out/err/delete/rerun` accept
 `--run RUN` as well as a positional target. Machine clients can use `--json`.
 `rerun` requires the command still to exist; undo its deletion first. It uses
 the current script, and records its current hash rather than restoring old code.
+
+The `stdin` metadata object records `kind` (`none`, `file`, `edited`), source
+`path`, full `bytes` and SHA-256 `sha`, plus `kept` and `truncated`. These describe
+the source when execution is prepared, even if the script reads only part of it.
+Inherited input is never copied. Explicit file and editor inputs retain a prefix
+under the same `runs.max-bytes` cap as output; `.in` files are deleted with their
+run by retention, deletion or clearing. Edited paths point to that private kept
+file. `run show` labels retained stdin and includes the metadata; `run in` prints
+the exact retained bytes, including binary input. JSON includes `input` and,
+when needed, `input_base64`; MCP `run_show` includes input text/base64 only up to
+64 KiB, always keeping source metadata. `runs.keep=0` saves no input history.
 
 Records include the command ID and name at execution, SHA-256 script hash,
 arguments, effective cwd, UTC start/end, duration, exit code or signal, runner's
@@ -141,16 +194,19 @@ background descendant retaining an output descriptor gets a bounded drain
 run's error marks an incomplete drain. Ordinary interactive input and colours
 continue to work. `runs.keep=0` restores direct output without recording.
 
-History lives in `runs/<command-id>/<run-id>.json`, `.out`, and `.err` under
+History lives in `runs/<command-id>/<run-id>.json`, `.out`, `.err`, and optional
+`.in` files under
 the data directory. Files are `0600`, new directories `0700`; atomic writes
 and the command store's process lock protect readers and writers. An unfinished
-record is published before execution, and final metadata after both streams.
+record is published before execution (including the retained explicit input),
+and final metadata after output streams.
 Command deletion retains runs, matching retained scripts and undo; run deletion
 and `runs-clear` permanently remove history and are not command undo operations.
 Clearing a running record prevents completion from recreating it.
 
 Defaults are `runs.keep=20` completed runs per command, `runs.max-bytes=1048576`
-per stream, and `view.runs=true`. Retention applies on completion; active and
+per stream, `view.runs=true`, and `view.stdin=true`. Retention applies on
+completion; active and
 unfinished records are kept. A cap keeps the beginning of each stream while
 continuing to count and forward every byte. Zero cap retains metadata only.
 `runs.keep=0` disables future recording, retaining existing records. The settings
@@ -163,7 +219,8 @@ hints and output preview. Its normal search and movement bindings apply;
 Enter opens the selected run in the scrollable viewer, and Escape closes it.
 
 The script itself is an ordinary editable file. `edit` checkpoints it before
-opening `$EDITOR` (default `vi`); the selected editor controls its own writing.
+opening `$VISUAL`, else `$EDITOR` (default `vi`); the selected editor controls
+its own writing.
 Metadata changes commit immediately. `undo` restores the last rename, delete,
 edit checkpoint, or pin change, including the saved script bytes. It does not
 undo execution. If a restored name is occupied, restoration uses a suffix.
@@ -184,7 +241,8 @@ Author names default to `owner`. Agent additions use `O_CMDS_AUTHOR`,
 `--author` overrides the name. No environment file or credentials are read.
 
 The TUI uses binding rows, with hints generated from the effective bindings.
-Default actions are Enter run, `v` view inside the TUI, `y`
+Default actions are Enter run, `g i` choose stdin file, `g e` edit stdin,
+`g r` rerun latest, `v` view inside the TUI, `y`
 copy, `e` edit, `d d` delete, `u` undo, `s` star. `/` filters using ochazuke's
 list/search bindings; `?` shows help; `q` quits standalone. Rebind or unbind
 these through ochazuke's `bindings`/`config` verbs. No keys are switched on in

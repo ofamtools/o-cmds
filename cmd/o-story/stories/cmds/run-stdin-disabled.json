@@ -1,0 +1,7 @@
+{
+ "name":"stdin UI can be opted out",
+ "commands":[{"name":"no-input-ui","script":"cat"}],
+ "settings":{"view.stdin":false},
+ "script":["g","i","g","e"],
+ "expect":[{"after":2,"modal":false,"runCount":0},{"after":4,"modal":false,"runCount":0}]
+}

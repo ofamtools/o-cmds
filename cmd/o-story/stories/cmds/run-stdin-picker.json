@@ -1,0 +1,9 @@
+{
+  "name": "stdin file chooser opens and cancels back to the command",
+  "commands": [{"name": "consume-input", "script": "cat"}],
+  "script": ["g", "i", "esc"],
+  "expect": [
+    {"after": 2, "modal": true, "contains": ["Stdin file:", "browse"]},
+    {"after": 3, "modal": false, "selected": "consume-input"}
+  ]
+}

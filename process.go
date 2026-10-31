@@ -40,11 +40,14 @@ func exitError(err error) error {
 }
 
 func editorCommand(ctx context.Context, path string) *exec.Cmd {
-	editor := os.Getenv("EDITOR")
+	editor := os.Getenv("VISUAL")
+	if editor == "" {
+		editor = os.Getenv("EDITOR")
+	}
 	if editor == "" {
 		editor = "vi"
 	}
-	// EDITOR is deliberately a shell command; the file remains a separate
+	// VISUAL/EDITOR is deliberately a shell command; the file remains a separate
 	// positional argument, including when its path contains shell metacharacters.
 	return exec.CommandContext(ctx, "sh", "-c", "exec "+editor+" \"$@\"", "o-cmds-editor", path)
 }

@@ -113,6 +113,10 @@ func (a *App) callTool(name string, raw json.RawMessage, client string) any {
 			return toolContent(nil, e)
 		}
 		r, e := a.store.ReadRun(p.Run)
+		if len(r.Input) > 64*1024 || len(r.InputBase64) > 64*1024 {
+			r.Input = ""
+			r.InputBase64 = ""
+		}
 		return toolContent(r, e)
 	case "cmd_add":
 		var p struct {

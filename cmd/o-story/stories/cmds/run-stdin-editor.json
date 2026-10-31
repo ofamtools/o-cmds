@@ -1,0 +1,8 @@
+{
+ "name":"edit an empty buffer and pipe it after save and quit",
+ "commands":[{"name":"consume-edited","script":"cat"}],
+ "foreground":true,
+ "env":{"VISUAL":"sh -c 'printf \"edited story input\\n\" > \"$1\"' editor"},
+ "script":["g","e","g","r"],
+ "expect":[{"after":2,"modal":false,"runCount":1,"runKind":"edited","runInput":"edited story input\n","contains":["Last run:","exit 0"]},{"after":4,"modal":false,"runCount":2,"runKind":"edited","runInput":"edited story input\n"}]
+}

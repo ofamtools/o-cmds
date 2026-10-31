@@ -45,15 +45,16 @@ func (a *App) runSpecs() []verbSpec {
 	target := map[string]ochazuke.Parameter{"run": param("Run ID, unique prefix or global displayed number")}
 	return []verbSpec{
 		{name: "list", description: "List runs, newest at the bottom; optionally filter by command", params: map[string]ochazuke.Parameter{"command": param("Command name, number or ID")}, positional: []string{"command"}, handler: a.listRuns, output: "run-table"},
-		{name: "show", description: "Show run metadata and labelled stdout/stderr", params: target, positional: []string{"run"}, handler: a.onRun(a.showRun), output: "run-show"},
+		{name: "show", description: "Show run metadata and labelled stdin/stdout/stderr", params: target, positional: []string{"run"}, handler: a.onRun(a.showRun), output: "run-show"},
 		{name: "out", description: "Print captured stdout bytes", params: target, positional: []string{"run"}, handler: a.onRun(func(_ ochazuke.Ctx, r RunOutput) ochazuke.Result { return ochazuke.Done(r) }), output: "run-out"},
+		{name: "in", description: "Print retained stdin bytes (may be truncated)", params: target, positional: []string{"run"}, handler: a.onRun(func(_ ochazuke.Ctx, r RunOutput) ochazuke.Result { return ochazuke.Done(r) }), output: "run-in"},
 		{name: "err", description: "Print captured stderr bytes", params: target, positional: []string{"run"}, handler: a.onRun(func(_ ochazuke.Ctx, r RunOutput) ochazuke.Result { return ochazuke.Done(r) }), output: "run-err"},
-		{name: "delete", description: "Delete one run and both captured streams", params: target, positional: []string{"run"}, handler: a.onRun(func(_ ochazuke.Ctx, r RunOutput) ochazuke.Result {
+		{name: "delete", description: "Delete one run and its captured streams", params: target, positional: []string{"run"}, handler: a.onRun(func(_ ochazuke.Ctx, r RunOutput) ochazuke.Result {
 			e := a.store.DeleteRun(r.ID)
 			a.refresh()
 			return result(nil, e)
 		})},
-		{name: "rerun", description: "Execute the current saved script with the run's args and cwd", params: target, positional: []string{"run"}, handler: a.onRun(a.rerun), cli: a.rerunCLI},
+		{name: "rerun", description: "Execute the current saved script with the run's args, cwd and stdin", params: target, positional: []string{"run"}, handler: a.onRun(a.rerun), cli: a.rerunCLI},
 	}
 }
 
@@ -157,7 +158,29 @@ func (a *App) rerun(_ ochazuke.Ctx, r RunOutput) ochazuke.Result {
 	if e != nil {
 		return ochazuke.Failed(e)
 	}
-	return a.executeArgs(c, r.Args)
+	in, e := a.inputForRun(r.Run)
+	if e != nil {
+		return ochazuke.Failed(e)
+	}
+	return a.executeInput(c, r.Args, in)
+}
+
+func (a *App) rerunLast(c ochazuke.Ctx, row Command) ochazuke.Result {
+	if a.tui && !a.r.Settings().Bool("view.runs") {
+		return ochazuke.Failed(errors.New("history UI disabled by view.runs"))
+	}
+	rows, err := a.store.Runs(row.ID)
+	if err != nil {
+		return ochazuke.Failed(err)
+	}
+	if len(rows) == 0 {
+		return ochazuke.Failed(errors.New("command has no recorded runs"))
+	}
+	r, err := a.store.ReadRun(rows[len(rows)-1].ID)
+	if err != nil {
+		return ochazuke.Failed(err)
+	}
+	return a.rerun(c, r)
 }
 
 func (a *App) rerunCommand(r RunOutput) (Command, error) {
@@ -168,10 +191,10 @@ func (a *App) rerunCommand(r RunOutput) (Command, error) {
 
 // Executing leaves use stream adapters, so framework JSON/error formatting
 // cannot append to stdout or flatten the script's exit status.
-func (a *App) rerunCLI(ctx context.Context, words []string) error {
-	fs := flag.NewFlagSet("run rerun", flag.ContinueOnError)
+func (a *App) executionTarget(name, field string, words []string) (string, error) {
+	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(a.errOut)
-	target := fs.String("run", "", "Run ID, prefix or number")
+	target := fs.String(field, "", "Name, ID, prefix or number")
 	raw := fs.String("json", "{}", "Host arguments")
 	fs.Bool("yes", false, "Host compatibility")
 	var flags, positional []string
@@ -186,44 +209,84 @@ func (a *App) rerunCLI(ctx context.Context, words []string) error {
 			continue
 		}
 		flags = append(flags, word)
-		if !strings.Contains(word, "=") && word != "--yes" {
+		if !strings.Contains(word, "=") && word != "--yes" && word != "--help" && word != "-h" {
 			i++
 			if i == len(words) {
-				return fmt.Errorf("%s needs a value", word)
+				return "", fmt.Errorf("%s needs a value", word)
 			}
 			flags = append(flags, words[i])
 		}
 	}
 	if e := fs.Parse(flags); e != nil {
 		if errors.Is(e, flag.ErrHelp) {
-			return nil
+			return "", nil
 		}
-		return e
+		return "", e
 	}
-	var host struct {
-		Run string `json:"run"`
-	}
+	host := map[string]any{}
 	if e := json.Unmarshal([]byte(*raw), &host); e != nil {
-		return e
+		return "", e
 	}
 	if *target == "" {
-		*target = host.Run
+		*target, _ = host[field].(string)
 	}
 	if len(positional) > 1 {
-		return errors.New("usage: run rerun RUN")
+		return "", fmt.Errorf("usage: %s TARGET", name)
 	}
 	if len(positional) == 1 {
 		*target = positional[0]
 	}
-	r, e := a.store.ReadRun(*target)
-	if e != nil {
-		return e
+	if *target == "" {
+		return "", errors.New("name a target or displayed number")
 	}
-	c, e := a.rerunCommand(r)
-	if e != nil {
-		return e
+	return *target, nil
+}
+
+func (a *App) rerunCLI(ctx context.Context, words []string) error {
+	target, err := a.executionTarget("run rerun", "run", words)
+	if err != nil || target == "" {
+		return err
 	}
-	return a.runRecorded(ctx, c, r.Args)
+	r, err := a.store.ReadRun(target)
+	if err != nil {
+		return err
+	}
+	return a.rerunRecorded(ctx, r)
+}
+
+func (a *App) rerunLastCLI(ctx context.Context, words []string) error {
+	target, err := a.executionTarget("cmd rerun", "target", words)
+	if err != nil || target == "" {
+		return err
+	}
+	c, err := a.store.Resolve(target, a.newestFirst())
+	if err != nil {
+		return err
+	}
+	rows, err := a.store.Runs(c.ID)
+	if err != nil {
+		return err
+	}
+	if len(rows) == 0 {
+		return errors.New("command has no recorded runs")
+	}
+	r, err := a.store.ReadRun(rows[len(rows)-1].ID)
+	if err != nil {
+		return err
+	}
+	return a.rerunRecorded(ctx, r)
+}
+
+func (a *App) rerunRecorded(ctx context.Context, r RunOutput) error {
+	c, err := a.rerunCommand(r)
+	if err != nil {
+		return err
+	}
+	in, err := a.inputForRun(r.Run)
+	if err != nil {
+		return err
+	}
+	return a.runRecordedInput(ctx, c, r.Args, in)
 }
 
 func runStatus(r Run) string {
@@ -252,7 +315,7 @@ func runSummary(r Run) string {
 
 func runText(r RunOutput) string {
 	b, _ := json.MarshalIndent(r.Run, "", "  ")
-	return runSummary(r.Run) + "\n\n--- stdout ---\n" + r.Stdout + "\n--- stderr ---\n" + r.Stderr + "\n\n--- metadata ---\n" + string(b)
+	return runSummary(r.Run) + "\n\n--- stdin (retained) ---\n" + r.Input + "\n\n--- stdout ---\n" + r.Stdout + "\n--- stderr ---\n" + r.Stderr + "\n\n--- metadata ---\n" + string(b)
 }
 
 func (a *App) printRunResult(kind string, b []byte) error {
@@ -289,6 +352,9 @@ func (a *App) printRunResult(kind string, b []byte) error {
 	text := runText(r)
 	encoded := ""
 	switch kind {
+	case "run-in":
+		text = r.Input
+		encoded = r.InputBase64
 	case "run-out":
 		text = r.Stdout
 		encoded = r.StdoutBase64

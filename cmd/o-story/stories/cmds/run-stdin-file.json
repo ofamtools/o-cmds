@@ -1,0 +1,11 @@
+{
+ "name": "pick an input file and pipe it to the selected command",
+ "commands": [{"name":"consume-input","script":"cat"}],
+ "inputs":{"story-input.txt":"file story input\n"},
+ "foreground":true,
+ "script":["g","i","s","t","o","r","y","-","i","n","p","u","t","enter"],
+ "expect":[
+  {"after":2,"modal":true,"contains":["Stdin file:","story-input.txt"]},
+  {"after":14,"modal":false,"runCount":1,"runKind":"file","runInput":"file story input\n"}
+ ]
+}

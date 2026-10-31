@@ -1,0 +1,8 @@
+{
+ "name":"a failing editor cancels without running the script",
+ "commands":[{"name":"editor-failed","script":"cat"}],
+ "foreground":true,
+ "env":{"VISUAL":"false"},
+ "script":["g","e"],
+ "expect":[{"after":2,"modal":false,"runCount":0,"contains":["stdin cancelled: editor failed"]}]
+}

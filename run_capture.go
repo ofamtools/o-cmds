@@ -156,7 +156,7 @@ func (s *captureStream) close() error {
 
 // prepareRun is shared by CLI and foreground/catalog execution. The returned
 // completion must run after Cmd.Run/Wait, including start failures.
-func (a *App) prepareRun(cmd *exec.Cmd, c Command, args []string, source string) (func(error) error, error) {
+func (a *App) prepareRun(cmd *exec.Cmd, c Command, args []string, source string, inputs ...*runInput) (func(error) error, error) {
 	keep := a.r.Settings().Int("runs.keep")
 	if keep == 0 {
 		return func(error) error { return nil }, nil
@@ -180,7 +180,21 @@ func (a *App) prepareRun(cmd *exec.Cmd, c Command, args []string, source string)
 	r := Run{ID: at.UTC().Format("20060102T150405.000000000Z") + "-" + id, CommandID: c.ID, CommandName: c.Name,
 		ScriptHash: fmt.Sprintf("%x", sha256.Sum256([]byte(script))), Args: append([]string{}, args...), Cwd: cwd,
 		Started: at.UTC(), Source: source, Author: stampAuthor(os.Getenv, "owner")}
-	if err := a.store.locked(func() error { return a.store.writeRun(r, nil, nil) }); err != nil {
+	r.Stdin.Kind = "none"
+	var input []byte
+	if len(inputs) > 0 && inputs[0] != nil {
+		r.Stdin = inputs[0].source
+		input = inputs[0].kept
+		if r.Stdin.Kind == "edited" {
+			r.Stdin.Path = a.store.runPath(r, ".in")
+		}
+	}
+	if err := a.store.locked(func() error {
+		if r.Stdin.Kind == "none" {
+			return a.store.writeRun(r, nil, nil)
+		}
+		return a.store.writeRun(r, nil, nil, input)
+	}); err != nil {
 		return nil, err
 	}
 	limit := a.r.Settings().Int("runs.max-bytes")

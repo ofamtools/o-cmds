@@ -16,6 +16,7 @@ import (
 // Run snapshots execution identity; it deliberately does not snapshot the script.
 // A nil Ended denotes an unfinished run (including an interrupted recorder).
 type Run struct {
+	Stdin        StdinSource   `json:"stdin"`
 	ID           string        `json:"id"`
 	CommandID    string        `json:"command_id"`
 	CommandName  string        `json:"command_name"`
@@ -41,8 +42,10 @@ type Run struct {
 
 type RunOutput struct {
 	Run
-	Stdout string `json:"stdout"`
-	Stderr string `json:"stderr"`
+	Input       string `json:"input,omitempty"`
+	InputBase64 string `json:"input_base64,omitempty"`
+	Stdout      string `json:"stdout"`
+	Stderr      string `json:"stderr"`
 	// JSON text replaces invalid UTF-8. These fields preserve binary streams.
 	StdoutBase64 string `json:"stdout_base64,omitempty"`
 	StderrBase64 string `json:"stderr_base64,omitempty"`
@@ -56,8 +59,8 @@ func safeRunPart(s string) bool {
 	return s != "" && s != "." && s != ".." && !strings.ContainsAny(s, `/\`)
 }
 
-// Caller holds the store lock. Metadata is the commit marker for the two streams.
-func (s *Store) writeRun(r Run, out, errOut []byte) error {
+// Caller holds the store lock. Metadata is the commit marker for the captured streams.
+func (s *Store) writeRun(r Run, out, errOut []byte, input ...[]byte) error {
 	if !safeRunPart(r.CommandID) || !safeRunPart(r.ID) {
 		return errors.New("invalid run identity")
 	}
@@ -69,6 +72,11 @@ func (s *Store) writeRun(r Run, out, errOut []byte) error {
 	}
 	if err := atomicBytes(s.runPath(r, ".err"), errOut); err != nil {
 		return err
+	}
+	if len(input) > 0 {
+		if err := atomicBytes(s.runPath(r, ".in"), input[0]); err != nil {
+			return err
+		}
 	}
 	return atomicJSON(s.runPath(r, ".json"), r)
 }
@@ -90,6 +98,9 @@ func (s *Store) runs() ([]Run, error) {
 		}
 		if !safeRunPart(r.ID) || !safeRunPart(r.CommandID) || s.runPath(r, ".json") != file {
 			return nil, fmt.Errorf("invalid run identity in %s", file)
+		}
+		if r.Stdin.Kind == "" {
+			r.Stdin.Kind = "none"
 		}
 		rows = append(rows, r)
 	}
@@ -140,6 +151,16 @@ func (s *Store) ReadRun(target string) (out RunOutput, err error) {
 		if e != nil {
 			return e
 		}
+		if out.Stdin.Kind != "none" {
+			b, e := os.ReadFile(s.runPath(out.Run, ".in"))
+			if e != nil {
+				return e
+			}
+			out.Input = string(b)
+			if !utf8.Valid(b) {
+				out.InputBase64 = base64.StdEncoding.EncodeToString(b)
+			}
+		}
 		b, e := os.ReadFile(s.runPath(out.Run, ".out"))
 		if e != nil {
 			return e
@@ -159,7 +180,7 @@ func (s *Store) ReadRun(target string) (out RunOutput, err error) {
 }
 
 func (s *Store) removeRun(r Run) error {
-	for _, ext := range []string{".json", ".out", ".err"} {
+	for _, ext := range []string{".json", ".out", ".err", ".in"} {
 		if err := os.Remove(s.runPath(r, ext)); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}

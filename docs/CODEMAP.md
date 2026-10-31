@@ -5,6 +5,8 @@
   catalog page and row formatting.
 * `store.go`: per-command files, author stamps, lock, duplicate suffixes,
   retained deletion and undo snapshots.
+* `stdin.go`: explicit input descriptors, hashing/capped snapshots, shared
+  path chooser with retained recent inputs, private editor buffer lifecycle.
 * `process.go`: injectable process runner, sh/editor/clipboard commands.
 * `run_capture.go`: shared CLI/foreground recorder, capped tee streams and
   independent output PTYs with resize and bounded draining.

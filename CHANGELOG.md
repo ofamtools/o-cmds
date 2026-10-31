@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+* Run with file stdin (`cmd run --stdin FILE`) or an empty editor buffer
+  (`--edit-stdin`, VISUAL/EDITOR/vi). Add binding rows g i (framework path
+  chooser), g e (editor), and g r / cmd rerun (latest run); view.stdin opts out
+  of the picker/editor UI and view.runs covers the rerun action.
+* Record stdin kind/path/bytes/SHA-256 and capped private input snapshots with
+  run retention. Show them in run show, raw run in and read-only MCP run_show.
+  Reruns reopen original file paths or reuse retained edited input; refuse
+  truncated edited reruns. Remove editor temp files on completion/cancellation.
+
 * Capture every CLI/TUI/catalog script execution in private run history with
   separate stdout/stderr, status or signal, timing, arguments, cwd, runner and
   script hash. Keep live output, stdin and terminal colour detection using

@@ -1,0 +1,8 @@
+{
+ "name":"an empty editor buffer cancels without a run",
+ "commands":[{"name":"consume-edited","script":"cat"}],
+ "foreground":true,
+ "env":{"VISUAL":"true"},
+ "script":["g","e"],
+ "expect":[{"after":2,"modal":false,"runCount":0,"contains":["stdin cancelled: editor buffer is empty"]}]
+}
