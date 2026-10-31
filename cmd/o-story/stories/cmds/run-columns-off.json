@@ -1,0 +1,9 @@
+{
+  "name": "view.run-columns off leaves the Runs and Last columns out",
+  "commands": [{"name": "counted", "script": "true\n"}],
+  "settings": {"view.detail": false, "view.run-columns": false},
+  "script": [],
+  "expect": [
+    {"after": 0, "contains": ["counted"], "lacks": ["Runs", "Last"]}
+  ]
+}

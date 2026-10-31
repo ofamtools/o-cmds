@@ -1,0 +1,10 @@
+{
+  "name": "the Runs and Last columns show the count since reset and the last-run age",
+  "commands": [{"name": "counted", "script": "true\n"}, {"name": "unrun", "script": "true\n"}],
+  "runs": [{"command": "counted", "stdout": "a", "exitCode": 0}, {"command": "counted", "stdout": "b", "exitCode": 0}, {"command": "counted", "stdout": "c", "exitCode": 0}],
+  "settings": {"view.detail": false},
+  "script": [],
+  "expect": [
+    {"after": 0, "contains": ["Runs", "Last", "counted", "    3  "]}
+  ]
+}

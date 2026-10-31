@@ -134,6 +134,35 @@ Compared with Vim: this resembles writing a buffer to `:write !command`
 the run, while Vim can send a selected range. Output is streamed and captured
 rather than replacing the edited buffer as `:range!` would.
 
+## New commands and run counts
+
+A command that has never run and was not dismissed is **new**: its row draws in
+the tone `view.new-tone` names (default `marker.queued`, the theme's accent;
+any tone name works, so `view.new-tone=cmds.new` plus a `cmds.new` row in
+`themes.json` gives it a colour of its own; empty turns the styling off). The
+tone travels on the catalog rows, so mtm's Commands tab shows it too.
+
+Each row carries `status` (`new`, `ran` or `dismissed`), `runs` (runs since the
+last reset), `last_run_at` and `last_run_age`; every row field is a prop filter
+in ochazuke, so `z /` can filter `status = new`. The table shows them as the
+`Runs` and `Last` columns (`view.run-columns`, default on, read at start), which
+narrow widths drop first.
+
+The count is durable: each started run adds one to a counter in the command's
+metadata, whatever `runs.keep` retains or prunes, and undo never lowers it.
+Commands recorded before the counter count their retained run records.
+
+```sh
+o-cmds cmd dismiss greeting      # x: mark seen without running (not new)
+o-cmds cmd undismiss greeting    # X: new again
+o-cmds cmd reset greeting --yes  # R: run count to 0, new again (asks first)
+o-cmds cmd undo                  # u: restores either
+```
+
+`x`, `X` and `R` act on every row of a `V` selection as one undo step. `reset`
+only resets the counter: retained run records stay (`cmd runs-clear` deletes
+them), and undoing a reset restores the old count plus any runs since.
+
 ## Run history
 
 Every script executed by `cmd run`, the standalone TUI, or the catalog's
@@ -222,7 +251,8 @@ The script itself is an ordinary editable file. `edit` checkpoints it before
 opening `$VISUAL`, else `$EDITOR` (default `vi`); the selected editor controls
 its own writing.
 Metadata changes commit immediately. `undo` restores the last rename, delete,
-edit checkpoint, or pin change, including the saved script bytes. It does not
+edit checkpoint, pin, dismiss or reset change, including the saved script bytes;
+a change over a `V` selection is one undo step. It does not
 undo execution. If a restored name is occupied, restoration uses a suffix.
 
 Storage is `$XDG_DATA_HOME/o-cmds`, default `~/.local/share/o-cmds`.
@@ -243,7 +273,8 @@ Author names default to `owner`. Agent additions use `O_CMDS_AUTHOR`,
 The TUI uses binding rows, with hints generated from the effective bindings.
 Default actions are Enter run, `g i` choose stdin file, `g e` edit stdin,
 `g r` rerun latest, `v` view inside the TUI, `y`
-copy, `e` edit, `d d` delete, `u` undo, `s` star. `/` filters using ochazuke's
+copy, `e` edit, `d d` delete, `u` undo, `s` star, `x` dismiss, `X` undismiss,
+`R` reset the run count. `/` filters using ochazuke's
 list/search bindings; `?` shows help; `q` quits standalone. Rebind or unbind
 these through ochazuke's `bindings`/`config` verbs. No keys are switched on in
 application code.
@@ -336,8 +367,10 @@ MCP lets agents leave commands for the owner:
 }
 ```
 
-The stdio server exposes `cmd_add`, `cmd_list`, `cmd_show`, `run_list` and
-`run_show`. It has **no execution or run-deletion tools**. `cmd_add` requires `script` (empty is valid), and accepts
+The stdio server exposes `cmd_add`, `cmd_list`, `cmd_show`, `cmd_dismiss`,
+`cmd_undismiss`, `run_list` and `run_show` (`cmd_dismiss`/`cmd_undismiss` take
+`target`; dismissing is harmless and undoable, so agents may; `cmd reset` is
+never offered and its agent right is `never`). It has **no execution or run-deletion tools**. `cmd_add` requires `script` (empty is valid), and accepts
 `name`, `desc`, `cwd`, `tags` and `author`. `cmd_list` takes optional `filter`;
 `cmd_show` takes `target` (a name, number as a string, or stable ID).
 `run_list` takes optional `command` (name, number or ID); `run_show` requires

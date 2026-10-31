@@ -1,0 +1,9 @@
+{
+  "name": "V selects rows and x dismisses every one; one u restores them all",
+  "commands": [{"name": "first", "script": "true\n"}, {"name": "second", "script": "true\n"}, {"name": "third", "script": "true\n"}],
+  "script": ["V", "k", "x", "u"],
+  "expect": [
+    {"after": 3, "status": {"first": "new", "second": "dismissed", "third": "dismissed"}, "toned": ["first"], "plain": ["second", "third"]},
+    {"after": 4, "status": {"first": "new", "second": "new", "third": "new"}, "toned": ["second", "third"]}
+  ]
+}

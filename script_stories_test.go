@@ -58,6 +58,8 @@ func TestScriptStories(t *testing.T) {
 					Contains, Lacks                  []string
 					RunInput, RunKind                string
 					RunCount                         *int
+					Status                           map[string]string
+					Toned, Plain                     []string
 					Selected                         string
 					Order                            []string
 					Modal                            *bool
@@ -115,6 +117,11 @@ func TestScriptStories(t *testing.T) {
 				if e := s.locked(func() error { return s.writeRun(r, []byte(seed.Stdout), []byte(seed.Stderr)) }); e != nil {
 					t.Fatal(e)
 				}
+			}
+			// Settings read at start (view.run-columns) come from the
+			// settings file, as they do for the owner.
+			if len(story.Settings) > 0 {
+				writeSettings(t, story.Settings)
 			}
 			var out bytes.Buffer
 			a, e := newApp(s, strings.NewReader(""), &out, &out)
@@ -176,6 +183,25 @@ func TestScriptStories(t *testing.T) {
 							}
 						}
 					}
+					items := map[string]ochazuke.ListItem{}
+					for _, item := range p.v.List(listID).Items() {
+						items[item.Label] = item
+					}
+					for label, status := range want.Status {
+						if got := items[label].Props["status"]; got != status {
+							t.Fatalf("after %d %s status=%v want %s", after, label, got, status)
+						}
+					}
+					for _, label := range want.Toned {
+						if len(items[label].Tones) == 0 {
+							t.Fatalf("after %d %s is not toned", after, label)
+						}
+					}
+					for _, label := range want.Plain {
+						if len(items[label].Tones) != 0 {
+							t.Fatalf("after %d %s is toned: %v", after, label, items[label].Tones)
+						}
+					}
 					if want.Selected != "" {
 						selected, ok := p.v.List(listID).Selected()
 						if !ok || selected.Label != want.Selected {
@@ -234,5 +260,20 @@ func TestScriptStories(t *testing.T) {
 				check(i + 1)
 			}
 		})
+	}
+}
+
+func writeSettings(t *testing.T, settings map[string]any) {
+	t.Helper()
+	dir := filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "o-cmds")
+	if e := os.MkdirAll(dir, 0o700); e != nil {
+		t.Fatal(e)
+	}
+	b, e := json.Marshal(settings)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = os.WriteFile(filepath.Join(dir, "settings.json"), b, 0o600); e != nil {
+		t.Fatal(e)
 	}
 }

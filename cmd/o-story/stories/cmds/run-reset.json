@@ -1,0 +1,16 @@
+{
+  "name": "R asks, then resets the run count to 0 and the command reads new; u restores the count",
+  "commands": [{"name": "busy", "script": "true\n"}],
+  "runs": [
+    {"command": "busy", "stdout": "one", "exitCode": 0},
+    {"command": "busy", "stdout": "two", "exitCode": 0}
+  ],
+  "settings": {"view.detail": false},
+  "script": ["R", "y", "u"],
+  "expect": [
+    {"after": 0, "status": {"busy": "ran"}, "plain": ["busy"], "contains": ["Runs", "Last", "    2  "]},
+    {"after": 1, "modal": true, "contains": ["Reset the run count of busy to 0?"]},
+    {"after": 2, "modal": false, "status": {"busy": "new"}, "toned": ["busy"], "contains": ["    0  -"], "runCount": 2},
+    {"after": 3, "status": {"busy": "ran"}, "plain": ["busy"], "contains": ["    2  "]}
+  ]
+}

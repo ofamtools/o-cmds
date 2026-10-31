@@ -1,0 +1,12 @@
+{
+  "name": "x dismisses the selected new command, X brings it back, u undoes",
+  "commands": [{"name": "older", "script": "true\n"}, {"name": "newer", "script": "true\n"}],
+  "script": ["x", "X", "x", "u"],
+  "expect": [
+    {"after": 0, "selected": "newer", "status": {"newer": "new", "older": "new"}, "toned": ["newer", "older"]},
+    {"after": 1, "selected": "newer", "status": {"newer": "dismissed", "older": "new"}, "plain": ["newer"], "toned": ["older"]},
+    {"after": 2, "status": {"newer": "new"}, "toned": ["newer"]},
+    {"after": 3, "status": {"newer": "dismissed"}, "plain": ["newer"]},
+    {"after": 4, "status": {"newer": "new"}, "toned": ["newer"]}
+  ]
+}

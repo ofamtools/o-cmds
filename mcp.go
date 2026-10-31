@@ -33,7 +33,7 @@ type mcpTool struct {
 // The MCP surface is an explicit allowlist over the app's verb descriptions.
 // Execution is deliberately absent from both discovery and dispatch.
 func (a *App) tools() []mcpTool {
-	allowed := map[string][]string{"cmd.add": {"name", "desc", "script", "cwd", "tags", "author"}, "cmd.list": {"filter"}, "cmd.show": {"target"}, "run.list": {"command"}, "run.show": {"run"}}
+	allowed := map[string][]string{"cmd.add": {"name", "desc", "script", "cwd", "tags", "author"}, "cmd.list": {"filter"}, "cmd.show": {"target"}, "cmd.dismiss": {"target"}, "cmd.undismiss": {"target"}, "run.list": {"command"}, "run.show": {"run"}}
 	out := []mcpTool{}
 	for _, spec := range a.verbs() {
 		names, ok := allowed[spec.noun+"."+spec.name]
@@ -53,7 +53,7 @@ func (a *App) tools() []mcpTool {
 		if spec.name == "add" {
 			schema["required"] = []string{"script"}
 		}
-		if spec.name == "show" {
+		if spec.name == "show" || spec.name == "dismiss" || spec.name == "undismiss" {
 			schema["required"] = names
 		}
 		out = append(out, mcpTool{Name: spec.noun + "_" + spec.name, Description: spec.description, InputSchema: schema})
@@ -151,6 +151,20 @@ func (a *App) callTool(name string, raw json.RawMessage, client string) any {
 		}
 		rows, e := a.rows(p.Filter)
 		return toolContent(rows, e)
+	case "cmd_dismiss", "cmd_undismiss":
+		var p struct {
+			Target string `json:"target"`
+		}
+		if e := decode(&p); e != nil {
+			return toolContent(nil, e)
+		}
+		c, e := a.store.Resolve(p.Target, a.newestFirst())
+		if e != nil {
+			return toolContent(nil, e)
+		}
+		dismissed := name == "cmd_dismiss"
+		v, e := a.store.ChangeAll([]string{"cmd/" + c.ID}, func(v *Command, _ []Command) { v.Dismissed = dismissed })
+		return toolContent(v, e)
 	case "cmd_show":
 		var p struct {
 			Target string `json:"target"`

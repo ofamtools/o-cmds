@@ -9,6 +9,8 @@ the page. Keys are application binding rows; the framework owns motions.
 | `j` / `k` | `j`, `k` | Similar: visual list movement supplied by ochazuke. |
 | `G` | `G` | Similar: framework list end motion; default startup selects newest without a key. |
 | `d d` | `dd` | Similar: hides the current command, retaining file/history, instead of deleting a text line into a register. |
+| `x` / `X` | `x`, `X` | Different: `x` dismisses the command (marks it seen without running it; over a `V` selection every row), `X` makes it new again; neither deletes text. |
+| `R` | `R` | Different: resets the run count to 0 after a confirm, rather than entering Replace mode; `u` restores the count. |
 | `u` | `u`, `:undo` | Similar: restores a command snapshot, including script bytes. No undo of process side effects. |
 | `y` | `y` | Similar: yanks the whole script to the clipboard, rather than starting a text operator. |
 | `:!cmd` | `:!` | Similar: Enter runs the selected saved script through sh, handing off the terminal standalone. |

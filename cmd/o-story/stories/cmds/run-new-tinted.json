@@ -1,0 +1,9 @@
+{
+  "name": "commands never run and not dismissed draw in the new tone; a run one does not",
+  "commands": [{"name": "ran-before", "script": "true\n"}, {"name": "brand-new", "script": "true\n"}],
+  "runs": [{"command": "ran-before", "stdout": "ok", "exitCode": 0}],
+  "script": [],
+  "expect": [
+    {"after": 0, "status": {"ran-before": "ran", "brand-new": "new"}, "toned": ["brand-new"], "plain": ["ran-before"]}
+  ]
+}

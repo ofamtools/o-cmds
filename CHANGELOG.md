@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+* New commands stand out: a command never run and not dismissed draws in the
+  tone `view.new-tone` names (default `marker.queued`; empty turns it off). The
+  tone rides on the catalog rows, so mtm's Commands tab shows it too. Rows carry
+  `status` (new/ran/dismissed), `runs`, `last_run_at` and `last_run_age`, which
+  ochazuke's prop filters offer.
+* `Runs` and `Last` columns (`view.run-columns`, default on), dropped first at
+  narrow widths. The count is a durable per-command counter (`runs_total` in the
+  metadata), so `runs.keep` pruning or 0 never lowers it; older commands count
+  their retained runs.
+* New verbs `cmd dismiss` (`x`), `cmd undismiss` (`X`) and `cmd reset` (`R`,
+  confirmed; resets the counter only, run records stay). They act on a `V`
+  selection as one undo step; `u` undoes them, and undo never rolls the run
+  counter back. Agents may dismiss/undismiss (also MCP `cmd_dismiss`,
+  `cmd_undismiss`); `reset` is agent right `never`. Requires ochazuke v0.77.0.
+
 - Animated README logo (reduced-motion users see the still logo)
 * Catalog hosts (mtm Commands page, nabe) show command metadata above the
   script as a fenced Markdown code block through ochazuke detail sections,

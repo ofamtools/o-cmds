@@ -29,6 +29,9 @@ type App struct {
 	tui         bool
 	changed     func()
 	stdinNotice ochazuke.NoticeID
+	// runCols is view.run-columns as read at start: the declared columns
+	// and the rows' cells must agree for the whole process.
+	runCols bool
 }
 
 type verbSpec struct {
@@ -38,16 +41,24 @@ type verbSpec struct {
 	positional        []string
 	handler           ochazuke.AppHandler
 	rows              bool
+	many              bool
+	confirm, agent    string
 	output            string
 	cli               func(context.Context, []string) error
 }
 
-var columns = []ochazuke.Column{
-	{Title: "#", Width: 5, Align: ochazuke.AlignRight},
-	{Title: "Name", Min: 12, Max: 28},
-	{Title: "Description", Min: 12},
-	{Title: "Age", Width: 7, Priority: 2},
-	{Title: "Author", Max: 24, Priority: 1},
+// cmdColumns are the command table's columns; runs adds the run count and
+// last-run age (view.run-columns), which narrow widths drop first.
+func cmdColumns(runs bool) []ochazuke.Column {
+	cols := []ochazuke.Column{
+		{Title: "#", Width: 5, Align: ochazuke.AlignRight},
+		{Title: "Name", Min: 12, Max: 28},
+		{Title: "Description", Min: 12},
+	}
+	if runs {
+		cols = append(cols, ochazuke.Column{Title: "Runs", Width: 4, Align: ochazuke.AlignRight, Priority: 3}, ochazuke.Column{Title: "Last", Width: 5, Priority: 4})
+	}
+	return append(cols, ochazuke.Column{Title: "Age", Width: 7, Priority: 2}, ochazuke.Column{Title: "Author", Max: 24, Priority: 1})
 }
 
 // commandPage is the page the catalog publishes: its detail is built-in
@@ -84,6 +95,8 @@ func newApp(s *Store, in io.Reader, out, errOut io.Writer) (*App, error) {
 		ochazuke.Setting{Name: "list.start-newest", Type: ochazuke.SettingBoolean, Default: true, Description: "Start the standalone page on the newest command"},
 		ochazuke.Setting{Name: "view.detail", Type: ochazuke.SettingBoolean, Default: true, Description: "Show the script and metadata beside the command list"},
 		ochazuke.Setting{Name: "view.detail-style", Type: ochazuke.SettingString, Default: detailStyleScript, Enum: []string{detailStyleScript, detailStyleMarkdown}, Description: "Standalone detail: script (numbered lines) or markdown (the metadata and code block catalog hosts show)"},
+		ochazuke.Setting{Name: "view.new-tone", Type: ochazuke.SettingString, Default: ochazuke.ToneQueued, Description: "Tone (a theme tone name) new commands, never run and not dismissed, draw in; empty turns the styling off", Validate: validTone},
+		ochazuke.Setting{Name: "view.run-columns", Type: ochazuke.SettingBoolean, Default: true, Description: "Show the Runs (count since reset) and Last (last-run age) columns; read at start"},
 		ochazuke.Setting{Name: "list.refresh", Type: ochazuke.SettingDuration, Default: 2 * time.Second, Description: "Reload the standalone list for agent additions; 0 disables polling"},
 	); err != nil {
 		return nil, err
@@ -96,6 +109,15 @@ func newApp(s *Store, in io.Reader, out, errOut io.Writer) (*App, error) {
 		if spec.rows {
 			b.Rows(spec.noun).Fetch().Quiet()
 		}
+		if spec.many {
+			b.Many()
+		}
+		if spec.confirm != "" {
+			b.Confirm(spec.confirm)
+		}
+		if spec.agent != "" {
+			b.Agent(spec.agent)
+		}
 		op := a.r.Operations[spec.noun+"."+spec.name]
 		op.Parameters = spec.params
 		a.r.Operations[op.Key()] = op
@@ -103,7 +125,8 @@ func newApp(s *Store, in io.Reader, out, errOut io.Writer) (*App, error) {
 	a.r.SetRecentPaths(a.recentInputs)
 	a.r.DefineGuard("stdin-ui", func(r *ochazuke.Runtime, _ ochazuke.KeyEvent) bool { return r.Settings().Bool("view.stdin") })
 	a.r.DefineGuard("history-ui", func(r *ochazuke.Runtime, _ ochazuke.KeyEvent) bool { return r.Settings().Bool("view.runs") })
-	a.r.Define("cmd").Columns(columns...)
+	a.runCols = a.r.Settings().Bool("view.run-columns")
+	a.r.Define("cmd").Columns(cmdColumns(a.runCols)...)
 	a.r.Define("run").Columns(runColumns...)
 	// Every application key is a binding row. Help/footer hints read the
 	// runtime's effective bindings, including owner overrides.
@@ -119,6 +142,9 @@ func newApp(s *Store, in io.Reader, out, errOut io.Writer) (*App, error) {
 		Bind("d d", ochazuke.Do("cmd.delete")).
 		Bind("u", ochazuke.Do("cmd.undo")).
 		Bind("s", ochazuke.Do("cmd.star")).
+		Bind("x", ochazuke.Do("cmd.dismiss")).
+		Bind("X", ochazuke.Do("cmd.undismiss")).
+		Bind("R", ochazuke.Do("cmd.reset")).
 		Bind("o", ochazuke.Do("ochazuke.setting.cycle", ochazuke.Arguments{"name": "list.order"})).
 		Bind("ctrl+d", ochazuke.Do("ochazuke.detail.scroll", ochazuke.Arguments{"lines": 8}).Guard("detail-scrolls")).
 		Bind("ctrl+u", ochazuke.Do("ochazuke.detail.scroll", ochazuke.Arguments{"lines": -8}).Guard("detail-scrolls"))
@@ -171,7 +197,10 @@ func (a *App) specs() []verbSpec {
 		{name: "edit", description: "Open $VISUAL/$EDITOR on the script; checkpoint its current contents for undo", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.edit)},
 		{name: "rename", description: "Rename immediately; duplicates receive a suffix", params: map[string]ochazuke.Parameter{"target": target, "name": param("New name")}, positional: []string{"target", "name"}, handler: a.on(a.rename)},
 		{name: "delete", description: "Hide a command immediately, retaining its script and undo history", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.delete)},
-		{name: "undo", description: "Undo the most recent rename, delete, edit or pin change", handler: a.undo},
+		{name: "undo", description: "Undo the most recent rename, delete, edit, pin, dismiss or reset change", handler: a.undo},
+		{name: "dismiss", description: "Mark a command (or the selected rows) seen without running it, so it no longer reads as new", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.dismiss(), many: true, agent: ochazuke.AgentAllow},
+		{name: "undismiss", description: "Mark a dismissed command (or the selected rows) new again", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.undismiss(), many: true, agent: ochazuke.AgentAllow},
+		{name: "reset", description: "Forget a command's runs: count to 0, new again; retained run records stay (cmd runs-clear deletes them)", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.reset(), many: true, confirm: "Reset the run count of {{label}} to 0? Retained run records stay; undo restores the count.", agent: ochazuke.AgentNever},
 		{name: "pin", description: "Pin a command without moving its chronological position", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.pin(true))},
 		{name: "unpin", description: "Unpin a command", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.pin(false))},
 		{name: "star", description: "Toggle a command's pin", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.star)},
@@ -288,15 +317,16 @@ func (a *App) rows(filter string) ([]ocli.Row, error) {
 	out := []ocli.Row{}
 	filter = strings.ToLower(filter)
 	lastRuns := map[string]Run{}
+	runs, err := a.store.Runs("")
+	if err != nil {
+		return nil, err
+	}
 	if a.r.Settings().Bool("view.runs") {
-		runs, err := a.store.Runs("")
-		if err != nil {
-			return nil, err
-		}
 		for _, r := range runs {
 			lastRuns[r.CommandID] = r
 		}
 	}
+	tone, now := a.newTone(), a.store.now()
 	for i, c := range cs {
 		if !strings.Contains(strings.ToLower(c.Name+" "+c.Description+" "+strings.Join(c.Tags, " ")), filter) {
 			continue
@@ -317,9 +347,15 @@ func (a *App) rows(filter string) ([]ocli.Row, error) {
 		}
 		data["script"] = text
 		data["detail_md"] = scriptMarkdown(text, c.Path)
-		data["age"] = age(c.Created, a.store.now())
+		data["age"] = age(c.Created, now)
 		if run, ok := lastRuns[c.ID]; ok {
 			data["last_run"] = runSummary(run)
+		}
+		st := runStateOf(c, runs)
+		data["runs"], data["status"] = st.Count, st.Status
+		if st.Last != nil {
+			data["last_run_at"] = st.Last.Format(time.RFC3339)
+			data["last_run_age"] = age(*st.Last, now)
 		}
 		name := c.Name
 		if c.Pinned {
@@ -333,7 +369,16 @@ func (a *App) rows(filter string) ([]ocli.Row, error) {
 			author += "@" + c.Author.Pane
 		}
 		data["author_label"] = author
-		out = append(out, ocli.Row{Noun: "cmd", ID: "cmd/" + c.ID, Label: c.Name, Data: data, Cells: []string{strconv.Itoa(i + 1), name, c.Description, age(c.Created, a.store.now()), author}})
+		cells := []string{strconv.Itoa(i + 1), name, c.Description}
+		if a.runCols {
+			cells = append(cells, runCells(st, now)...)
+		}
+		cells = append(cells, age(c.Created, now), author)
+		row := ocli.Row{Noun: "cmd", ID: "cmd/" + c.ID, Label: c.Name, Data: data, Cells: cells}
+		if st.Status == statusNew {
+			row.Tones = toneRow(tone, len(cells))
+		}
+		out = append(out, row)
 	}
 	return out, nil
 }

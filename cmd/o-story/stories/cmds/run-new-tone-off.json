@@ -1,0 +1,9 @@
+{
+  "name": "view.new-tone empty turns the new-row styling off",
+  "commands": [{"name": "brand-new", "script": "true\n"}],
+  "settings": {"view.new-tone": ""},
+  "script": [],
+  "expect": [
+    {"after": 0, "status": {"brand-new": "new"}, "plain": ["brand-new"]}
+  ]
+}

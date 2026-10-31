@@ -31,6 +31,17 @@ type Command struct {
 	Pinned      bool      `json:"pinned"`
 	Deleted     bool      `json:"deleted,omitempty"`
 	Path        string    `json:"path"`
+	// RunsTotal counts every run ever started, independent of runs.keep;
+	// undo never rolls it back. Nil (metadata from before the counter)
+	// counts the retained run records instead (runCount).
+	RunsTotal *int       `json:"runs_total,omitempty"`
+	LastRunAt *time.Time `json:"last_run_at,omitempty"`
+	// RunsBase and ResetAt are what cmd.reset wrote: the total and time at
+	// the reset. They are undoable, so undoing a reset keeps later runs.
+	RunsBase int        `json:"runs_base,omitempty"`
+	ResetAt  *time.Time `json:"reset_at,omitempty"`
+	// Dismissed marks a command seen without running it (cmd.dismiss).
+	Dismissed bool `json:"dismissed,omitempty"`
 }
 
 type Author struct {
@@ -355,9 +366,12 @@ type Snapshot struct {
 	Script  string    `json:"script"`
 	At      time.Time `json:"at"`
 	Undone  bool      `json:"undone"`
+	// Batch groups the snapshots of one change over several commands
+	// (ChangeAll): undo restores them together.
+	Batch string `json:"batch,omitempty"`
 }
 
-func (s *Store) checkpoint(c Command) error {
+func (s *Store) checkpoint(c Command, batch ...string) error {
 	text, err := s.Script(c)
 	if err != nil {
 		return err
@@ -377,7 +391,11 @@ func (s *Store) checkpoint(c Command) error {
 			next = n + 1
 		}
 	}
-	return atomicJSON(filepath.Join(dir, fmt.Sprintf("%020d.json", next)), Snapshot{Command: c, Script: text, At: s.now()})
+	snap := Snapshot{Command: c, Script: text, At: s.now()}
+	if len(batch) > 0 {
+		snap.Batch = batch[0]
+	}
+	return atomicJSON(filepath.Join(dir, fmt.Sprintf("%020d.json", next)), snap)
 }
 
 func (s *Store) Change(id string, change func(*Command, []Command)) (c Command, err error) {
@@ -399,6 +417,85 @@ func (s *Store) Change(id string, change func(*Command, []Command)) (c Command, 
 	return
 }
 
+// ChangeAll applies change to several commands as one undo step: their
+// snapshots share a batch, so one undo restores every one of them.
+func (s *Store) ChangeAll(ids []string, change func(*Command, []Command)) (out []Command, err error) {
+	err = s.locked(func() error {
+		rows, e := s.list()
+		if e != nil {
+			return e
+		}
+		batch, e := token()
+		if e != nil {
+			return e
+		}
+		for _, id := range ids {
+			c, e := resolve(rows, id)
+			if e != nil {
+				return e
+			}
+			if e = s.checkpoint(c, batch); e != nil {
+				return e
+			}
+			change(&c, rows)
+			if e = s.metadata(c); e != nil {
+				return e
+			}
+			out = append(out, c)
+		}
+		return nil
+	})
+	return
+}
+
+// stored is a command's current metadata, deleted or not; ok is false
+// when it has none.
+func (s *Store) stored(id string) (c Command, ok bool) {
+	b, err := os.ReadFile(filepath.Join(s.Dir, id+".json"))
+	if err != nil || json.Unmarshal(b, &c) != nil {
+		return Command{}, false
+	}
+	return c, true
+}
+
+// CountRun records that a run of the command started: the durable total
+// and last-run time, kept whatever runs.keep retains. It writes no undo
+// snapshot; a command still without a total starts from its retained runs.
+func (s *Store) CountRun(id string, at time.Time) error {
+	return s.locked(func() error {
+		rows, e := s.list()
+		if e != nil {
+			return e
+		}
+		c, e := resolve(rows, "cmd/"+id)
+		if e != nil {
+			return e
+		}
+		if c.RunsTotal == nil {
+			runs, e := s.runs()
+			if e != nil {
+				return e
+			}
+			n := retainedRuns(runs, c.ID)
+			c.RunsTotal = &n
+		}
+		*c.RunsTotal++
+		at = at.UTC()
+		c.LastRunAt = &at
+		return s.metadata(c)
+	})
+}
+
+func retainedRuns(runs []Run, id string) int {
+	n := 0
+	for _, r := range runs {
+		if r.CommandID == id {
+			n++
+		}
+	}
+	return n
+}
+
 func (s *Store) Undo() (c Command, err error) {
 	err = s.locked(func() error {
 		dir := filepath.Join(s.Dir, ".history")
@@ -410,6 +507,9 @@ func (s *Store) Undo() (c Command, err error) {
 			return e
 		}
 		// Snapshot timestamps determine history order; random IDs only break ties.
+		// A batch (ChangeAll) is undone whole: the newest snapshot's batch
+		// and every other snapshot of it not yet undone.
+		batch := ""
 		for i := len(files) - 1; i >= 0; i-- {
 			f := files[i]
 			if !strings.HasSuffix(f.Name(), ".json") {
@@ -424,25 +524,47 @@ func (s *Store) Undo() (c Command, err error) {
 			if e = json.Unmarshal(b, &snap); e != nil {
 				return e
 			}
-			if snap.Undone {
+			if snap.Undone || (batch != "" && snap.Batch != batch) {
 				continue
 			}
-			c = snap.Command
-			rows, e := s.list()
+			restored, e := s.restore(snap, path)
 			if e != nil {
 				return e
 			}
-			c.Name = uniqueName(c.Name, rows, c.ID)
-			if e = atomicBytes(s.path(c.ID), []byte(snap.Script)); e != nil {
-				return e
+			if batch == "" {
+				c = restored
 			}
-			if e = s.metadata(c); e != nil {
-				return e
+			if snap.Batch == "" {
+				return nil
 			}
-			snap.Undone = true
-			return atomicJSON(path, snap)
+			batch = snap.Batch
+		}
+		if batch != "" {
+			return nil
 		}
 		return errors.New("nothing to undo")
 	})
 	return
+}
+
+// restore writes a snapshot back and marks it undone. The run counter and
+// last-run time are not the owner's edits, so the current ones stay.
+func (s *Store) restore(snap Snapshot, path string) (Command, error) {
+	c := snap.Command
+	if cur, ok := s.stored(c.ID); ok {
+		c.RunsTotal, c.LastRunAt = cur.RunsTotal, cur.LastRunAt
+	}
+	rows, e := s.list()
+	if e != nil {
+		return c, e
+	}
+	c.Name = uniqueName(c.Name, rows, c.ID)
+	if e = atomicBytes(s.path(c.ID), []byte(snap.Script)); e != nil {
+		return c, e
+	}
+	if e = s.metadata(c); e != nil {
+		return c, e
+	}
+	snap.Undone = true
+	return c, atomicJSON(path, snap)
 }
