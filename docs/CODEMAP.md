@@ -15,6 +15,8 @@
 * `run_verbs.go`: run noun, command history relations, history chooser and
   output viewer, CLI stream/table adapters and rerun with original args/cwd.
 * `tui.go`: mounts the catalog page, initial newest selection, refresh timer.
+* `detail_md.go`: catalog detail sections for hosts, fenced script Markdown
+  with shebang/extension language and outfenced backticks.
 * `script_view.go`: script detail projection, numbered whitespace-preserving
   rendering and a read-only modal using ochazuke detail windows and bindings.
 * `pick.go`: same-page selection bindings, stdout script result, cancellation.
@@ -24,5 +26,6 @@
 * `*_test.go`: isolated store, CLI, MCP and model-dispatch behavior checks.
 * `script_stories_test.go`: executes app story fixtures against the mounted
   page and effective bindings, with optional rendered-frame artifacts.
-* `cmd/o-story/stories/cmds`: executable script UI stories and older skipped
-  host integration gaps.
+* `host_mount_test.go`: mounts the published page as an external host does.
+* `cmd/o-story/stories/cmds`: executable script, run and host UI stories, and
+  skipped host integration gaps.

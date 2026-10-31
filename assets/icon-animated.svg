@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="o-cmds">
+<title>o-cmds</title>
+<style>.btn{transform-box:fill-box;transform-origin:50% 50%}.ar{transform-box:fill-box;transform-origin:50% 50%}@media (prefers-reduced-motion: no-preference){.btn{animation:press 3s cubic-bezier(.45,0,.25,1) infinite}.ar{animation:dart 3s cubic-bezier(.45,0,.25,1) infinite}@keyframes press{0%{transform:none}5%{transform:scale(0.93,0.93)}12%{transform:scale(1.03,1.03)}18%,100%{transform:none}}@keyframes dart{0%,10%{transform:none}18%{transform:translate(4px,0px)}26%{transform:translate(-1px,0px)}32%,100%{transform:none}}}</style>
+<rect width="128" height="128" rx="28" fill="#20240f"/>
+<g>
+<path d="M24 32H88M24 56H72" stroke="#b5d43a" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><g class="btn"><rect x="24" y="72" width="80" height="32" rx="8" fill="#b5d43a"/><path class="ar" d="M40 88H80M72 80L80 88L72 96" fill="none" stroke="#f5f9e7" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/></g>
+</g>
+</svg>

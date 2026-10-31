@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
-    <img alt="o-cmds" src="assets/logo-light.svg" width="360">
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-animated-dark.svg">
+    <img alt="o-cmds" src="assets/logo-animated-light.svg" width="360">
   </picture>
   <br>
   <a href="https://github.com/ofamtools/o-cmds/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/ofamtools/o-cmds"></a>
@@ -260,6 +260,13 @@ stays put. Moving the list cursor updates the preview.
 returns to the list (also in pick mode). Scripts use plain terminal monospace.
 The `view.detail=false` setting hides the right pane; the viewer still works.
 
+Hosts that mount the Commands page (mtm, nabe) draw the catalog's built-in
+detail sections instead: the metadata, then the script as a fenced Markdown
+code block (language from the shebang or file extension, default `sh`), with
+blank lines and indentation kept. `view.detail-style=markdown` shows that look
+in the standalone TUI too; the default `script` keeps the numbered view. A
+host with its own `detail.sections=false` shows the plain record fields.
+
 `o` cycles the existing `list.order` setting between oldest-first and
 newest-first, keeping the cursor on the same command. This uses ochazuke's
 setting-cycle verb and applies to the current session; persist your preferred
@@ -307,11 +314,12 @@ dotfiles, installs no hooks, and needs `o-cmds` on PATH when the function runs.
 o-cmds settings set list.order newest-first --yes
 o-cmds settings set list.start-newest false --yes
 o-cmds settings set view.detail false --yes
+o-cmds settings set view.detail-style markdown --yes
 o-cmds settings set list.refresh 0s --yes
 ```
 
 Defaults: `list.order=oldest-first`, `list.start-newest=true`,
-`view.detail=true`, `list.refresh=2s`. Zero refresh disables standalone polling
+`view.detail=true`, `view.detail-style=script`, `list.refresh=2s`. Zero refresh disables standalone polling
 for commands left by agents. Existing selection is preserved on reload.
 Settings use `$XDG_CONFIG_HOME/o-cmds/settings.json`; framework state uses
 `$XDG_STATE_HOME/o-cmds`. Restart the page after changing detail visibility or

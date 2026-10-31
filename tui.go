@@ -32,6 +32,12 @@ func (p *page) tick() tea.Cmd {
 }
 
 func mountPage(a *App) (*page, error) {
+	return mountPageAs(a, func(ocli.CatalogDoc) ocli.CatalogPage { return standalonePage(a.r) }, ocli.PageConfig{DetailKinds: map[string]ocli.DetailFactory{scriptDetailKind: newScriptDetail}})
+}
+
+// mountPageAs mounts the commands page from the published catalog with the
+// page spec and detail kinds a mount supplies (standalone, or a host's).
+func mountPageAs(a *App, spec func(ocli.CatalogDoc) ocli.CatalogPage, cfg ocli.PageConfig) (*page, error) {
 	data, e := ocli.Catalog(a.r, "o-cmds", version)
 	if e != nil {
 		return nil, e
@@ -42,7 +48,7 @@ func mountPage(a *App) (*page, error) {
 	}
 	m := ochazuke.NewModel(a.r)
 	m.Title = "o-cmds"
-	v, e := ocli.MountPage(m, doc, commandPage(a.r.Settings().Bool("view.detail")), ocli.PageConfig{DetailKinds: map[string]ocli.DetailFactory{scriptDetailKind: newScriptDetail}})
+	v, e := ocli.MountPage(m, doc, spec(doc), cfg)
 	if e != nil {
 		return nil, e
 	}

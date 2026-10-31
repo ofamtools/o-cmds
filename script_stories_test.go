@@ -32,10 +32,16 @@ func TestScriptStories(t *testing.T) {
 		t.Fatal(e)
 	}
 	files = append(files, runFiles...)
+	hostFiles, e := filepath.Glob("cmd/o-story/stories/cmds/host-*.json")
+	if e != nil {
+		t.Fatal(e)
+	}
+	files = append(files, hostFiles...)
 	for _, file := range files {
 		t.Run(filepath.Base(file), func(t *testing.T) {
 			var story struct {
 				Name       string
+				Host       bool
 				Commands   []Add
 				Picker     bool
 				Foreground bool
@@ -62,6 +68,15 @@ func TestScriptStories(t *testing.T) {
 			data, e := os.ReadFile(file)
 			if e != nil {
 				t.Fatal(e)
+			}
+			// A skipped story records a known gap and may use the older
+			// fixture shape, so skip before decoding the rest.
+			var gap struct{ Skip string }
+			if e = json.Unmarshal(data, &gap); e != nil {
+				t.Fatal(e)
+			}
+			if gap.Skip != "" {
+				t.Skip(gap.Skip)
 			}
 			if e = json.Unmarshal(data, &story); e != nil {
 				t.Fatal(e)
@@ -118,6 +133,8 @@ func TestScriptStories(t *testing.T) {
 				if e == nil {
 					p = pick.page
 				}
+			} else if story.Host {
+				p, e = mountHostPage(a)
 			} else {
 				p, e = mountPage(a)
 			}

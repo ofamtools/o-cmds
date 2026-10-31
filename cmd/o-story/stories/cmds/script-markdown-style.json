@@ -1,0 +1,11 @@
+{
+  "name": "view.detail-style=markdown shows the hosts' metadata and code block standalone",
+  "settings": {"view.detail-style": "markdown"},
+  "commands": [
+    {"name": "fenced", "description": "Script with a fence", "script": "#!/usr/bin/python3\ndoc = '''\n```\ninner\n```\n'''\n\n\tprint(doc)\n"}
+  ],
+  "script": [],
+  "expect": [
+    {"after": 0, "selected": "fenced", "contains": ["Name: fenced", "Description: Script with a fence", "Age: now", "#!/usr/bin/python3", "doc = '''", "```", "inner", "    print(doc)"], "lacks": ["1 │ ", "is not registered here", "````"]}
+  ]
+}
