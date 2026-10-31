@@ -25,13 +25,15 @@ case for a particular host, script name, pane, harness or noun is introduced.
 
 Known host gaps, verified from the current local APIs:
 
-* The catalog declares detail kind `script`. Standalone and pick register its
-  factory through `PageConfig.DetailKinds`; a catalog host needs the same kind
-  registered to render this custom preview. Unknown kinds fall back to the
-  framework's record detail. The external catalog proxy also cannot open this
-  app's modal from a captured CLI show result. A shared script/text detail kind
-  and viewer contract belong in ochazuke and its hosts; mounted rendering was
-  not claimed or tested here.
+* The published catalog page declares built-in detail sections (a fields
+  section, then a markdown section over the row field `detail_md`, the script
+  in a fenced code block). Every ochazuke host draws them without registering
+  an o-cmds detail kind; `host-script-view` mounts the published page with no
+  kinds, as mtm does. Sections replace a detail kind in ochazuke, so the
+  standalone page swaps them for kind `script` (numbered lines) unless
+  `view.detail-style=markdown`. The external catalog proxy still cannot open
+  this app's modal from a captured CLI show result (`host-script-viewer`,
+  skipped); a shared text viewer contract belongs in ochazuke and its hosts.
 * `ochazuke/cli.CatalogList` has id, noun, source and title, and has no initial
   selection policy. Standalone selects the newest command via `List.Select`.
   A mounted page starts where its host chooses. A general catalog initial

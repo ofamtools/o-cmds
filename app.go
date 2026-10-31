@@ -50,10 +50,23 @@ var columns = []ochazuke.Column{
 	{Title: "Author", Max: 24, Priority: 1},
 }
 
+// commandPage is the page the catalog publishes: its detail is built-in
+// sections, which every host renders without an o-cmds detail kind.
 func commandPage(detail bool) ocli.CatalogPage {
 	p := ocli.CatalogPage{ID: pageID, Title: "Commands", Layout: ocli.LayoutSplit, Lists: []ocli.CatalogList{{ID: listID, Noun: "cmd", Source: "cmd.list", Title: "Commands"}}}
 	if detail {
-		p.Detail = &ocli.CatalogDetail{Kind: scriptDetailKind, Fields: []string{"name", "description", "author", "cwd", "tags", "last_run", "script"}}
+		p.Detail = &ocli.CatalogDetail{Fields: detailFields, Sections: detailSections}
+	}
+	return p
+}
+
+// standalonePage is the page o-cmds mounts itself, where the script detail
+// kind is registered. Sections replace a kind, so view.detail-style=script
+// drops them for the numbered script view; markdown keeps the hosts' look.
+func standalonePage(r *ochazuke.Runtime) ocli.CatalogPage {
+	p := commandPage(r.Settings().Bool("view.detail"))
+	if p.Detail != nil && r.Settings().String("view.detail-style") == detailStyleScript {
+		p.Detail = &ocli.CatalogDetail{Kind: scriptDetailKind, Fields: detailFields}
 	}
 	return p
 }
@@ -70,6 +83,7 @@ func newApp(s *Store, in io.Reader, out, errOut io.Writer) (*App, error) {
 		ochazuke.Setting{Name: "list.order", Type: ochazuke.SettingString, Default: "oldest-first", Enum: []string{"oldest-first", "newest-first"}, Description: "Command order, including numbered CLI targets"},
 		ochazuke.Setting{Name: "list.start-newest", Type: ochazuke.SettingBoolean, Default: true, Description: "Start the standalone page on the newest command"},
 		ochazuke.Setting{Name: "view.detail", Type: ochazuke.SettingBoolean, Default: true, Description: "Show the script and metadata beside the command list"},
+		ochazuke.Setting{Name: "view.detail-style", Type: ochazuke.SettingString, Default: detailStyleScript, Enum: []string{detailStyleScript, detailStyleMarkdown}, Description: "Standalone detail: script (numbered lines) or markdown (the metadata and code block catalog hosts show)"},
 		ochazuke.Setting{Name: "list.refresh", Type: ochazuke.SettingDuration, Default: 2 * time.Second, Description: "Reload the standalone list for agent additions; 0 disables polling"},
 	); err != nil {
 		return nil, err
@@ -302,6 +316,7 @@ func (a *App) rows(filter string) ([]ocli.Row, error) {
 			return nil, e
 		}
 		data["script"] = text
+		data["detail_md"] = scriptMarkdown(text, c.Path)
 		data["age"] = age(c.Created, a.store.now())
 		if run, ok := lastRuns[c.ID]; ok {
 			data["last_run"] = runSummary(run)
@@ -317,6 +332,7 @@ func (a *App) rows(filter string) ([]ocli.Row, error) {
 		if c.Author.Pane != "" {
 			author += "@" + c.Author.Pane
 		}
+		data["author_label"] = author
 		out = append(out, ocli.Row{Noun: "cmd", ID: "cmd/" + c.ID, Label: c.Name, Data: data, Cells: []string{strconv.Itoa(i + 1), name, c.Description, age(c.Created, a.store.now()), author}})
 	}
 	return out, nil
