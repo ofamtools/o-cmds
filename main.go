@@ -10,8 +10,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	ocli "github.com/unixsuperhero/ochazuke/cli"
 	"github.com/unixsuperhero/oden"
@@ -76,26 +78,28 @@ func dispatch(a *App, args []string) error {
 	sh := a.shell()
 	// Register the same app verbs with a thin stream adapter. Oden still
 	// owns groups, aliases, help and unique prefixes; ochazuke owns calls.
-	children := []oden.Command{}
-	for _, spec := range a.specs() {
+	groups := map[string][]oden.Command{}
+	for _, spec := range a.verbs() {
 		v := spec
 		params := []oden.Parameter{}
-		for _, name := range a.r.Operations["cmd."+v.name].ParameterOrder() {
+		for _, name := range a.r.Operations[v.noun+"."+v.name].ParameterOrder() {
 			p := v.params[name]
 			params = append(params, oden.Parameter{Name: name, Type: p.Type, Description: p.Description, Required: p.Required})
 		}
-		children = append(children, oden.Command{Name: v.name, Summary: v.description, Parameters: params, Usage: "[NAME|NUMBER] [--flags]", Run: func(ctx context.Context, words []string) error {
+		groups[v.noun] = append(groups[v.noun], oden.Command{Name: v.name, Summary: v.description, Parameters: params, Usage: "[NAME|NUMBER] [--flags]", Run: func(ctx context.Context, words []string) error {
 			if v.cli != nil {
 				return v.cli(ctx, words)
 			}
 			return a.verbCLI(sh, v, words)
 		}})
 	}
-	app.Add(oden.Command{Name: "cmd", Summary: "record, inspect and run saved shell commands", Children: children})
+	for _, noun := range []string{"cmd", "run"} {
+		app.Add(oden.Command{Name: noun, Summary: "inspect and manage " + noun + " records", Children: groups[noun]})
+	}
 	app.Add(oden.Command{Name: "view", Summary: "open the Commands page", Usage: "[--smoke] [--width N] [--height N]", Run: func(_ context.Context, args []string) error { return runTUI(a, args) }})
 	app.Add(oden.Command{Name: "pick", Summary: "choose a command and print its script without running it", Usage: "[NAME|NUMBER]", Run: func(_ context.Context, args []string) error { return a.pickCLI(args) }})
 	app.Add(oden.Command{Name: "shell-init", Summary: "print an optional current-shell command function", Usage: "zsh|bash [--name NAME]", Run: func(_ context.Context, args []string) error { return shellInit(args, a.out, a.errOut) }})
-	app.Add(oden.Command{Name: "mcp", Summary: "serve cmd_add, cmd_list and cmd_show over stdio (no execution tool)", Run: func(_ context.Context, args []string) error {
+	app.Add(oden.Command{Name: "mcp", Summary: "serve command add/list/show and run list/show over stdio (no execution tool)", Run: func(_ context.Context, args []string) error {
 		if len(args) > 0 {
 			return errors.New("usage: o-cmds mcp")
 		}
@@ -116,7 +120,7 @@ func machineArgs(args []string) bool {
 }
 
 func (a *App) verbCLI(sh *ocli.Shell, v verbSpec, args []string) error {
-	words := append([]string{"cmd", v.name}, args...)
+	words := append([]string{v.noun, v.name}, args...)
 	if machineArgs(args) || v.output == "" {
 		return sh.Run(background(), words)
 	}
@@ -128,6 +132,9 @@ func (a *App) verbCLI(sh *ocli.Shell, v verbSpec, args []string) error {
 	copyShell.Stdout = &buf
 	if e := copyShell.Run(background(), words); e != nil {
 		return e
+	}
+	if strings.HasPrefix(v.output, "run-") {
+		return a.printRunResult(v.output, buf.Bytes())
 	}
 	var text string
 	if v.output == "script" {
@@ -219,7 +226,24 @@ func (a *App) runCLI(ctx context.Context, args []string) error {
 	if e != nil {
 		return e
 	}
+	return a.runRecorded(ctx, row, argv)
+}
+
+func (a *App) runRecorded(ctx context.Context, row Command, argv []string) error {
+	// A terminal sends these to the whole foreground process group. Let the
+	// script receive them while the recorder survives to save its result.
+	interrupts := make(chan os.Signal, 1)
+	signal.Notify(interrupts, os.Interrupt, syscall.SIGQUIT)
+	defer signal.Stop(interrupts)
 	cmd := scriptCommand(ctx, row, argv)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = a.in, a.out, a.errOut
-	return exitError(a.run(cmd))
+	finish, e := a.prepareRun(cmd, row, argv, "cli")
+	if e != nil {
+		return e
+	}
+	cmd.Stdin = a.in
+	if cmd.Stdout == nil {
+		cmd.Stdout, cmd.Stderr = a.out, a.errOut
+	}
+	runErr := a.run(cmd)
+	return errors.Join(exitError(runErr), finish(runErr))
 }

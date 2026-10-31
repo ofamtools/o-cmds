@@ -1,0 +1,309 @@
+package main
+
+import (
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/charmbracelet/x/term"
+	"github.com/unixsuperhero/ochazuke"
+)
+
+var runColumns = []ochazuke.Column{
+	{Title: "#", Width: 5}, {Title: "Started", Width: 20}, {Title: "Exit", Width: 12},
+	{Title: "Duration", Width: 12}, {Title: "Out/Err", Width: 18},
+}
+
+func nonnegative(v any) error {
+	if v.(int) < 0 {
+		return fmt.Errorf("must be at least zero")
+	}
+	return nil
+}
+
+func (a *App) verbs() []verbSpec {
+	specs := a.specs()
+	for i := range specs {
+		specs[i].noun = "cmd"
+	}
+	runs := a.runSpecs()
+	for i := range runs {
+		runs[i].noun = "run"
+	}
+	return append(specs, runs...)
+}
+
+func (a *App) runSpecs() []verbSpec {
+	target := map[string]ochazuke.Parameter{"run": param("Run ID, unique prefix or global displayed number")}
+	return []verbSpec{
+		{name: "list", description: "List runs, newest at the bottom; optionally filter by command", params: map[string]ochazuke.Parameter{"command": param("Command name, number or ID")}, positional: []string{"command"}, handler: a.listRuns, output: "run-table"},
+		{name: "show", description: "Show run metadata and labelled stdout/stderr", params: target, positional: []string{"run"}, handler: a.onRun(a.showRun), output: "run-show"},
+		{name: "out", description: "Print captured stdout bytes", params: target, positional: []string{"run"}, handler: a.onRun(func(_ ochazuke.Ctx, r RunOutput) ochazuke.Result { return ochazuke.Done(r) }), output: "run-out"},
+		{name: "err", description: "Print captured stderr bytes", params: target, positional: []string{"run"}, handler: a.onRun(func(_ ochazuke.Ctx, r RunOutput) ochazuke.Result { return ochazuke.Done(r) }), output: "run-err"},
+		{name: "delete", description: "Delete one run and both captured streams", params: target, positional: []string{"run"}, handler: a.onRun(func(_ ochazuke.Ctx, r RunOutput) ochazuke.Result {
+			e := a.store.DeleteRun(r.ID)
+			a.refresh()
+			return result(nil, e)
+		})},
+		{name: "rerun", description: "Execute the current saved script with the run's args and cwd", params: target, positional: []string{"run"}, handler: a.onRun(a.rerun), cli: a.rerunCLI},
+	}
+}
+
+func (a *App) onRun(fn func(ochazuke.Ctx, RunOutput) ochazuke.Result) ochazuke.AppHandler {
+	return func(c ochazuke.Ctx) ochazuke.Result {
+		target := ochazuke.StringArg(c.Args, "run", "")
+		if target == "" && c.Instance != nil {
+			target, _ = c.Instance.Data.(string)
+		}
+		r, e := a.store.ReadRun(target)
+		if e != nil {
+			return ochazuke.Failed(e)
+		}
+		return fn(c, r)
+	}
+}
+
+type runRow struct {
+	Run
+	Number int `json:"number"`
+}
+
+func (a *App) runRows(commandID string) ([]runRow, error) {
+	runs, e := a.store.Runs("")
+	if e != nil {
+		return nil, e
+	}
+	rows := []runRow{}
+	for i, r := range runs {
+		if commandID == "" || r.CommandID == commandID {
+			rows = append(rows, runRow{r, i + 1})
+		}
+	}
+	return rows, nil
+}
+
+func (a *App) listRuns(c ochazuke.Ctx) ochazuke.Result {
+	id := ""
+	if target := ochazuke.StringArg(c.Args, "command", ""); target != "" {
+		cmd, e := a.store.Resolve(target, a.newestFirst())
+		if e != nil {
+			return ochazuke.Failed(e)
+		}
+		id = cmd.ID
+	}
+	rows, e := a.runRows(id)
+	return result(rows, e)
+}
+
+func (a *App) commandRuns(_ ochazuke.Ctx, c Command) ochazuke.Result {
+	rows, e := a.runRows(c.ID)
+	if e != nil {
+		return ochazuke.Failed(e)
+	}
+	if a.tui {
+		if !a.r.Settings().Bool("view.runs") {
+			return ochazuke.Done(nil)
+		}
+		choices := make([]ochazuke.ChooserRow, 0, len(rows))
+		for _, row := range rows {
+			r := row.Run
+			tone := ochazuke.ToneErrored
+			if r.ExitCode != nil && *r.ExitCode == 0 {
+				tone = ochazuke.ToneDone
+			}
+			choices = append(choices, ochazuke.ChooserRow{ID: r.ID, Label: runSummary(r), Data: r.ID, Cells: []string{strconv.Itoa(row.Number), runSummary(r)}, Tones: []ochazuke.ToneSpan{{Cell: 1, Tone: tone}}})
+		}
+		_, e := a.r.OpenChooser(ochazuke.ChooserSpec{Kind: "run-history", Title: "Runs: " + c.Name, Rows: choices, Empty: "No recorded runs", Preview: func(row ochazuke.ChooserRow) string {
+			r, e := a.store.ReadRun(row.ID)
+			if e != nil {
+				return e.Error()
+			}
+			return runText(r)
+		}, Choose: func(row ochazuke.ChooserRow) ochazuke.Result {
+			r, e := a.store.ReadRun(row.ID)
+			if e != nil {
+				return ochazuke.Failed(e)
+			}
+			return a.showRun(ochazuke.Ctx{}, r)
+		}})
+		return result(nil, e)
+	}
+	return ochazuke.Done(rows)
+}
+
+func (a *App) clearRuns(_ ochazuke.Ctx, c Command) ochazuke.Result {
+	e := a.store.ClearRuns(c.ID)
+	a.refresh()
+	return result(nil, e)
+}
+
+func (a *App) showRun(_ ochazuke.Ctx, r RunOutput) ochazuke.Result {
+	if a.tui {
+		return result(nil, openScriptViewer(a.r, "Run: "+r.CommandName, runText(r)))
+	}
+	return ochazuke.Done(r)
+}
+
+func (a *App) rerun(_ ochazuke.Ctx, r RunOutput) ochazuke.Result {
+	c, e := a.rerunCommand(r)
+	if e != nil {
+		return ochazuke.Failed(e)
+	}
+	return a.executeArgs(c, r.Args)
+}
+
+func (a *App) rerunCommand(r RunOutput) (Command, error) {
+	c, e := a.store.Resolve(r.CommandID, false)
+	c.Cwd = r.Cwd
+	return c, e
+}
+
+// Executing leaves use stream adapters, so framework JSON/error formatting
+// cannot append to stdout or flatten the script's exit status.
+func (a *App) rerunCLI(ctx context.Context, words []string) error {
+	fs := flag.NewFlagSet("run rerun", flag.ContinueOnError)
+	fs.SetOutput(a.errOut)
+	target := fs.String("run", "", "Run ID, prefix or number")
+	raw := fs.String("json", "{}", "Host arguments")
+	fs.Bool("yes", false, "Host compatibility")
+	var flags, positional []string
+	for i := 0; i < len(words); i++ {
+		word := words[i]
+		if word == "--" {
+			positional = append(positional, words[i+1:]...)
+			break
+		}
+		if !strings.HasPrefix(word, "-") {
+			positional = append(positional, word)
+			continue
+		}
+		flags = append(flags, word)
+		if !strings.Contains(word, "=") && word != "--yes" {
+			i++
+			if i == len(words) {
+				return fmt.Errorf("%s needs a value", word)
+			}
+			flags = append(flags, words[i])
+		}
+	}
+	if e := fs.Parse(flags); e != nil {
+		if errors.Is(e, flag.ErrHelp) {
+			return nil
+		}
+		return e
+	}
+	var host struct {
+		Run string `json:"run"`
+	}
+	if e := json.Unmarshal([]byte(*raw), &host); e != nil {
+		return e
+	}
+	if *target == "" {
+		*target = host.Run
+	}
+	if len(positional) > 1 {
+		return errors.New("usage: run rerun RUN")
+	}
+	if len(positional) == 1 {
+		*target = positional[0]
+	}
+	r, e := a.store.ReadRun(*target)
+	if e != nil {
+		return e
+	}
+	c, e := a.rerunCommand(r)
+	if e != nil {
+		return e
+	}
+	return a.runRecorded(ctx, c, r.Args)
+}
+
+func runStatus(r Run) string {
+	if r.Ended == nil {
+		return "unfinished"
+	}
+	if r.Signal != "" {
+		return "signal " + r.Signal
+	}
+	if r.ExitCode != nil {
+		return "exit " + strconv.Itoa(*r.ExitCode)
+	}
+	return "error"
+}
+
+func runSummary(r Run) string {
+	flags := ""
+	if r.StdoutCut || r.StderrCut {
+		flags += " truncated"
+	}
+	if r.CaptureError != "" {
+		flags += " capture incomplete"
+	}
+	return fmt.Sprintf("%s  %s  %s  %d/%d B%s", r.Started.Local().Format("2006-01-02 15:04:05"), runStatus(r), r.Duration.Round(time.Millisecond), r.StdoutBytes, r.StderrBytes, flags)
+}
+
+func runText(r RunOutput) string {
+	b, _ := json.MarshalIndent(r.Run, "", "  ")
+	return runSummary(r.Run) + "\n\n--- stdout ---\n" + r.Stdout + "\n--- stderr ---\n" + r.Stderr + "\n\n--- metadata ---\n" + string(b)
+}
+
+func (a *App) printRunResult(kind string, b []byte) error {
+	if kind == "run-table" {
+		var rows []runRow
+		if e := json.Unmarshal(b, &rows); e != nil {
+			return e
+		}
+		var text strings.Builder
+		fmt.Fprintln(&text, "#  Started              Exit           Duration       stdout/stderr bytes (kept)  Command  Run")
+		for _, row := range rows {
+			r := row.Run
+			status := runStatus(r)
+			if f, ok := a.out.(*os.File); ok && term.IsTerminal(f.Fd()) {
+				color := "31"
+				if r.ExitCode != nil && *r.ExitCode == 0 {
+					color = "32"
+				}
+				status = "\x1b[" + color + "m" + status + "\x1b[0m"
+			}
+			cut := ""
+			if r.StdoutCut || r.StderrCut {
+				cut = " truncated"
+			}
+			fmt.Fprintf(&text, "%d  %s  %-14s %-14s %d/%d (%d/%d)%s  %s  %s\n", row.Number, r.Started.Local().Format("2006-01-02 15:04:05"), status, r.Duration.Round(time.Millisecond), r.StdoutBytes, r.StderrBytes, r.StdoutKept, r.StderrKept, cut, r.CommandName, r.ID)
+		}
+		_, e := io.WriteString(a.out, text.String())
+		return e
+	}
+	var r RunOutput
+	if e := json.Unmarshal(b, &r); e != nil {
+		return e
+	}
+	text := runText(r)
+	encoded := ""
+	switch kind {
+	case "run-out":
+		text = r.Stdout
+		encoded = r.StdoutBase64
+	case "run-err":
+		text = r.Stderr
+		encoded = r.StderrBase64
+	}
+	if encoded != "" {
+		raw, e := base64.StdEncoding.DecodeString(encoded)
+		if e != nil {
+			return e
+		}
+		_, e = a.out.Write(raw)
+		return e
+	}
+	_, e := io.WriteString(a.out, text)
+	return e
+}

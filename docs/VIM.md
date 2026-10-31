@@ -21,6 +21,9 @@ the page. Keys are application binding rows; the framework owns motions.
 | `:edit` | `:edit` | Similar: opens the script in `$EDITOR`; editor controls its own writes. |
 | `inputlist()` | `inputlist()` | Similar: optional `pick` chooses one item or cancels; it returns script text on stdout rather than a Vim numeric result. |
 | Shell function initialization | n/a | A shell convenience for history and current-shell evaluation; no Vim interaction counterpart. |
+| `:history` | `:history`, `:history-indexing` | Similar: run list shows numbered history with newest at bottom. Ours records execution and separate streams, and numbers shift after deletion/retention; Vim's history indices remain fixed. |
+| `inputlist()` | `inputlist()` | Similar: H opens the framework's searchable history chooser with output preview; Enter opens a read-only output viewer instead of returning a numeric answer. |
+| `H` | `H` | Different: opens command run history, rather than moving to the top of the screen. No default H row existed in this app or the pinned framework catalog. |
 
 The app does not redefine framework spill/focus behavior, or install function
 key bindings. Delete and metadata changes take effect immediately; undo

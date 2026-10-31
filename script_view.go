@@ -34,6 +34,7 @@ type scriptDetail struct {
 	command Command
 	script  string
 	age     string
+	lastRun string
 	valid   bool
 }
 
@@ -65,6 +66,7 @@ func (v *scriptDetail) Show(row ocli.Row, ok bool) error {
 	}
 	v.script = v.host.Field(row, "script")
 	v.age = v.host.Field(row, "age")
+	v.lastRun = v.host.Field(row, "last_run")
 	return nil
 }
 
@@ -90,6 +92,9 @@ func (v *scriptDetail) Block(width, height int) ochazuke.Block {
 		"Description: " + c.Description,
 		fmt.Sprintf("Author: %s  Cwd: %s", author, c.Cwd),
 		"Tags: " + strings.Join(c.Tags, ", "),
+	}
+	if v.lastRun != "" {
+		header = append(header, "Last run: "+v.lastRun)
 	}
 	header = header[:min(len(header), max(0, height-2))]
 	for i, line := range header {

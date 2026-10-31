@@ -87,10 +87,80 @@ o-cmds cmd add --name report --script 'pwd' --tags '["work","daily"]'
 ```
 
 Runs use `sh SCRIPT ARG...`, with the recorded cwd if present. Otherwise they
-inherit the caller's directory. Stdin, stdout and stderr stream directly, and
+inherit the caller's directory. Stdin remains connected, stdout and stderr stream live, and
 the CLI returns the script's exit status. A missing recorded directory does
 not prevent saving; running reports the directory error. Script bytes are
 preserved, including when the script is empty or has no trailing newline.
+
+## Run history
+
+Every script executed by `cmd run`, the standalone TUI, or the catalog's
+`cmd.run` operation gets a run record. `pick` and the `oc` shell function only
+print a script for the caller's shell to evaluate; **their executions cannot
+be captured by o-cmds**. Shell command history and captured run history are
+separate things.
+
+```sh
+o-cmds cmd runs hello             # command name, abbreviation or number
+o-cmds run list                   # all runs, including deleted commands
+o-cmds run show 1                 # metadata and labelled stdout/stderr
+o-cmds run out 1                  # exact captured stdout, for piping
+o-cmds run err 1                  # exact captured stderr, for piping
+o-cmds run rerun 1                # current script, original args and cwd
+o-cmds run delete 1               # remove record and both streams
+o-cmds cmd runs-clear hello       # remove all of this command's runs
+```
+
+Runs list oldest first, newest at the bottom, independently of `list.order`.
+Their numbers refer to the global run list, including when filtered by command;
+numbers change after pruning/deletion. A stable `run/ID`, exact ID or unique ID
+prefix also works. Ambiguous prefixes fail without executing anything.
+`run list NAME|N` filters by command; `run show/out/err/delete/rerun` accept
+`--run RUN` as well as a positional target. Machine clients can use `--json`.
+`rerun` requires the command still to exist; undo its deletion first. It uses
+the current script, and records its current hash rather than restoring old code.
+
+Records include the command ID and name at execution, SHA-256 script hash,
+arguments, effective cwd, UTC start/end, duration, exit code or signal, runner's
+author/harness stamp, CLI/TUI source, observed and retained byte counts, and
+separate truncation flags. Start failures have an error and no exit code.
+An interrupted recorder leaves an unfinished record; its in-memory output
+cannot be recovered after a hard kill. Streams become available at completion.
+`run show --json '{}'` and MCP return readable stream text; a binary stream
+also has `stdout_base64` or `stderr_base64` to preserve invalid UTF-8 exactly.
+
+Each terminal output stream gets its own output PTY; redirected output uses
+tee pipes. Terminal detection, ANSI colours, initial dimensions and resize
+updates are preserved; stdout and stderr remain separate. Stdin and the
+controlling terminal are inherited. Independent output PTYs mean scripts
+that change terminal modes through stdout, compare tty device identities, or
+write directly to `/dev/tty` can behave differently. Direct `/dev/tty` writes
+bypass capture. There is no combined cross-stream ordering guarantee. A
+background descendant retaining an output descriptor gets a bounded drain
+(one second per PTY; one second for exec's pipe drain); `capture_error` or the
+run's error marks an incomplete drain. Ordinary interactive input and colours
+continue to work. `runs.keep=0` restores direct output without recording.
+
+History lives in `runs/<command-id>/<run-id>.json`, `.out`, and `.err` under
+the data directory. Files are `0600`, new directories `0700`; atomic writes
+and the command store's process lock protect readers and writers. An unfinished
+record is published before execution, and final metadata after both streams.
+Command deletion retains runs, matching retained scripts and undo; run deletion
+and `runs-clear` permanently remove history and are not command undo operations.
+Clearing a running record prevents completion from recreating it.
+
+Defaults are `runs.keep=20` completed runs per command, `runs.max-bytes=1048576`
+per stream, and `view.runs=true`. Retention applies on completion; active and
+unfinished records are kept. A cap keeps the beginning of each stream while
+continuing to count and forward every byte. Zero cap retains metadata only.
+`runs.keep=0` disables future recording, retaining existing records. The settings
+are nonnegative integers. `view.runs=false` hides the last-run status and disables
+the history modal without disabling recording or CLI access.
+
+The command preview shows the latest run's status, time and duration. `H` opens
+the focused command's history, with the framework chooser's binding-derived
+hints and output preview. Its normal search and movement bindings apply;
+Enter opens the selected run in the scrollable viewer, and Escape closes it.
 
 The script itself is an ordinary editable file. `edit` checkpoints it before
 opening `$EDITOR` (default `vi`); the selected editor controls its own writing.
@@ -200,10 +270,12 @@ MCP lets agents leave commands for the owner:
 }
 ```
 
-The stdio server exposes exactly `cmd_add`, `cmd_list`, `cmd_show`. It has **no
-`cmd_run` tool**. `cmd_add` requires `script` (empty is valid), and accepts
+The stdio server exposes `cmd_add`, `cmd_list`, `cmd_show`, `run_list` and
+`run_show`. It has **no execution or run-deletion tools**. `cmd_add` requires `script` (empty is valid), and accepts
 `name`, `desc`, `cwd`, `tags` and `author`. `cmd_list` takes optional `filter`;
 `cmd_show` takes `target` (a name, number as a string, or stable ID).
+`run_list` takes optional `command` (name, number or ID); `run_show` requires
+`run` (run number as a string, stable ID or unique prefix). Both are read-only.
 MCP additions also stamp the initializing client's name when agent environment
 metadata is unavailable. Notifications receive no response; tool failures use
 MCP error content. Stdio uses newline-delimited JSON-RPC with initialize,

@@ -31,6 +31,7 @@ type App struct {
 }
 
 type verbSpec struct {
+	noun              string
 	name, description string
 	params            map[string]ochazuke.Parameter
 	positional        []string
@@ -51,7 +52,7 @@ var columns = []ochazuke.Column{
 func commandPage(detail bool) ocli.CatalogPage {
 	p := ocli.CatalogPage{ID: pageID, Title: "Commands", Layout: ocli.LayoutSplit, Lists: []ocli.CatalogList{{ID: listID, Noun: "cmd", Source: "cmd.list", Title: "Commands"}}}
 	if detail {
-		p.Detail = &ocli.CatalogDetail{Kind: scriptDetailKind, Fields: []string{"name", "description", "author", "cwd", "tags", "script"}}
+		p.Detail = &ocli.CatalogDetail{Kind: scriptDetailKind, Fields: []string{"name", "description", "author", "cwd", "tags", "last_run", "script"}}
 	}
 	return p
 }
@@ -61,6 +62,9 @@ func newApp(s *Store, in io.Reader, out, errOut io.Writer) (*App, error) {
 	a.r = ochazuke.NewRuntime()
 	a.r.Config().App = "o-cmds"
 	if err := a.r.DeclareSetting(
+		ochazuke.Setting{Name: "runs.keep", Type: ochazuke.SettingInteger, Default: 20, Description: "Completed runs retained per command; 0 disables recording", Validate: nonnegative},
+		ochazuke.Setting{Name: "runs.max-bytes", Type: ochazuke.SettingInteger, Default: 1024 * 1024, Description: "Bytes retained per stdout/stderr stream", Validate: nonnegative},
+		ochazuke.Setting{Name: "view.runs", Type: ochazuke.SettingBoolean, Default: true, Description: "Show last-run status and enable the TUI history view"},
 		ochazuke.Setting{Name: "list.order", Type: ochazuke.SettingString, Default: "oldest-first", Enum: []string{"oldest-first", "newest-first"}, Description: "Command order, including numbered CLI targets"},
 		ochazuke.Setting{Name: "list.start-newest", Type: ochazuke.SettingBoolean, Default: true, Description: "Start the standalone page on the newest command"},
 		ochazuke.Setting{Name: "view.detail", Type: ochazuke.SettingBoolean, Default: true, Description: "Show the script and metadata beside the command list"},
@@ -68,23 +72,26 @@ func newApp(s *Store, in io.Reader, out, errOut io.Writer) (*App, error) {
 	); err != nil {
 		return nil, err
 	}
-	for _, spec := range a.specs() {
-		b := a.r.Define("cmd").Columns(columns...).Verb(spec.name, spec.handler, spec.description)
+	for _, spec := range a.verbs() {
+		b := a.r.Define(spec.noun).Verb(spec.name, spec.handler, spec.description)
 		if len(spec.positional) > 0 {
 			b.Positional(spec.positional...)
 		}
 		if spec.rows {
-			b.Rows("cmd").Fetch().Quiet()
+			b.Rows(spec.noun).Fetch().Quiet()
 		}
-		op := a.r.Operations["cmd."+spec.name]
+		op := a.r.Operations[spec.noun+"."+spec.name]
 		op.Parameters = spec.params
 		a.r.Operations[op.Key()] = op
 	}
+	a.r.Define("cmd").Columns(columns...)
+	a.r.Define("run").Columns(runColumns...)
 	// Every application key is a binding row. Help/footer hints read the
 	// runtime's effective bindings, including owner overrides.
 	a.r.Define("cmd").Mode("normal").
 		Bind("enter", ochazuke.Do("cmd.run")).
 		Bind("v", ochazuke.Do("cmd.show")).
+		Bind("H", ochazuke.Do("cmd.runs")).
 		Bind("y", ochazuke.Do("cmd.copy", ochazuke.Arguments{"yank": true})).
 		Bind("e", ochazuke.Do("cmd.edit")).
 		Bind("d d", ochazuke.Do("cmd.delete")).
@@ -127,6 +134,8 @@ func param(desc string) ochazuke.Parameter {
 func (a *App) specs() []verbSpec {
 	target := param("Command name, displayed number or stable ID (defaults to selected row)")
 	return []verbSpec{
+		{name: "runs", description: "List a command's run history, newest at the bottom", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.commandRuns), output: "run-table"},
+		{name: "runs-clear", description: "Remove a command's captured run history", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.clearRuns)},
 		{name: "add", description: "Record a shell script, including an empty or unassociated one", params: map[string]ochazuke.Parameter{"name": param("Name; duplicates receive a suffix"), "desc": param("Description"), "file": param("Read script from file; otherwise script or stdin"), "script": param("Script text"), "cwd": param("Working directory; absence is allowed"), "tags": {Type: "array", Description: "Tags"}, "author": param("Author name; defaults to agent environment or owner")}, handler: a.add},
 		{name: "list", description: "List numbered commands; newest at the bottom by default", params: map[string]ochazuke.Parameter{"filter": param("Match name, description or tags")}, handler: a.list, rows: true, output: "table"},
 		{name: "show", description: "Show a command's script and metadata", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.show), output: "script"},
@@ -251,6 +260,16 @@ func (a *App) rows(filter string) ([]ocli.Row, error) {
 	}
 	out := []ocli.Row{}
 	filter = strings.ToLower(filter)
+	lastRuns := map[string]Run{}
+	if a.r.Settings().Bool("view.runs") {
+		runs, err := a.store.Runs("")
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range runs {
+			lastRuns[r.CommandID] = r
+		}
+	}
 	for i, c := range cs {
 		if !strings.Contains(strings.ToLower(c.Name+" "+c.Description+" "+strings.Join(c.Tags, " ")), filter) {
 			continue
@@ -271,6 +290,9 @@ func (a *App) rows(filter string) ([]ocli.Row, error) {
 		}
 		data["script"] = text
 		data["age"] = age(c.Created, a.store.now())
+		if run, ok := lastRuns[c.ID]; ok {
+			data["last_run"] = runSummary(run)
+		}
 		name := c.Name
 		if c.Pinned {
 			name = "★ " + name
@@ -306,12 +328,24 @@ func (a *App) show(c ochazuke.Ctx, row Command) ochazuke.Result {
 }
 
 func (a *App) execute(c ochazuke.Ctx, row Command) ochazuke.Result {
-	cmd := scriptCommand(background(), row, stringList(c.Args["args"]))
-	if a.tui {
-		return ochazuke.Foreground(cmd)
+	return a.executeArgs(row, stringList(c.Args["args"]))
+}
+
+func (a *App) executeArgs(row Command, args []string) ochazuke.Result {
+	if !a.tui {
+		return result(nil, a.runRecorded(background(), row, args))
 	}
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = a.in, a.out, a.errOut
-	return result(nil, exitError(a.run(cmd)))
+	cmd := scriptCommand(background(), row, args)
+	finish, err := a.prepareRun(cmd, row, args, "tui")
+	if err != nil {
+		return ochazuke.Failed(err)
+	}
+	return ochazuke.Foreground(cmd).Then(func(c ochazuke.Ctx, _ any, runErr error) {
+		if err := finish(runErr); err != nil {
+			c.Error("save run: " + err.Error())
+		}
+		a.refresh()
+	})
 }
 
 func (a *App) copy(c ochazuke.Ctx, row Command) ochazuke.Result {

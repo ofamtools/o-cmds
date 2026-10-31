@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"syscall"
 
 	"github.com/unixsuperhero/oden"
 )
@@ -29,6 +30,9 @@ func exitError(err error) error {
 		code := ee.ExitCode()
 		if code < 0 {
 			code = 128
+			if status, ok := ee.Sys().(syscall.WaitStatus); ok && status.Signaled() {
+				code += int(status.Signal())
+			}
 		}
 		return &oden.ExitError{Code: code}
 	}

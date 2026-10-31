@@ -1,0 +1,16 @@
+{
+  "name": "history list previews separate streams and opens output in the viewer",
+  "commands": [{"name": "history-command", "script": "printf hello\n"}],
+  "runs": [
+    {"command": "history-command", "stdout": "older output", "stderr": "older error", "exitCode": 7},
+    {"command": "history-command", "stdout": "latest output", "stderr": "latest error", "exitCode": 0}
+  ],
+  "script": ["H", "ctrl+n", "ctrl+n", "enter", "esc"],
+  "expect": [
+    {"after": 0, "contains": ["Last run:", "exit 0"]},
+    {"after": 1, "modal": true, "contains": ["Runs: history-command", "exit 7", "exit 0", "stdout", "stderr", "older output", "older error"]},
+    {"after": 3, "modal": true, "contains": ["latest output", "latest error"]},
+    {"after": 4, "modal": true, "contains": ["Run: history-command", "latest output", "latest error"]},
+    {"after": 5, "modal": false, "selected": "history-command"}
+  ]
+}

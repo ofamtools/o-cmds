@@ -43,7 +43,7 @@ func TestMCPToolsLifecycleAndNoRun(t *testing.T) {
 	for _, tool := range tools.Result.Tools {
 		names[tool.Name] = true
 	}
-	if len(names) != 3 || !names["cmd_add"] || !names["cmd_list"] || !names["cmd_show"] {
+	if len(names) != 5 || !names["cmd_add"] || !names["cmd_list"] || !names["cmd_show"] || !names["run_list"] || !names["run_show"] {
 		t.Fatalf("tools=%v", names)
 	}
 	var call struct {

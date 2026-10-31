@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -26,6 +27,11 @@ func TestScriptStories(t *testing.T) {
 	if len(files) == 0 {
 		t.Fatal("no script stories")
 	}
+	runFiles, e := filepath.Glob("cmd/o-story/stories/cmds/run-*.json")
+	if e != nil {
+		t.Fatal(e)
+	}
+	files = append(files, runFiles...)
 	for _, file := range files {
 		t.Run(filepath.Base(file), func(t *testing.T) {
 			var story struct {
@@ -33,8 +39,12 @@ func TestScriptStories(t *testing.T) {
 				Commands []Add
 				Picker   bool
 				Settings map[string]any
-				Script   []string
-				Expect   []struct {
+				Runs     []struct {
+					Command, Stdout, Stderr string
+					ExitCode                int
+				}
+				Script []string
+				Expect []struct {
 					After                            int
 					Contains, Lacks                  []string
 					Selected                         string
@@ -54,6 +64,17 @@ func TestScriptStories(t *testing.T) {
 			s := fixture(t)
 			for _, c := range story.Commands {
 				if _, e = s.Add(c); e != nil {
+					t.Fatal(e)
+				}
+			}
+			for i, seed := range story.Runs {
+				c, e := s.Resolve(seed.Command, false)
+				if e != nil {
+					t.Fatal(e)
+				}
+				at := s.now().Add(time.Duration(i) * time.Second)
+				r := Run{ID: fmt.Sprintf("story-run-%d", i+1), CommandID: c.ID, CommandName: c.Name, Started: at, Ended: &at, ExitCode: &seed.ExitCode, StdoutBytes: int64(len(seed.Stdout)), StderrBytes: int64(len(seed.Stderr)), StdoutKept: len(seed.Stdout), StderrKept: len(seed.Stderr)}
+				if e := s.locked(func() error { return s.writeRun(r, []byte(seed.Stdout), []byte(seed.Stderr)) }); e != nil {
 					t.Fatal(e)
 				}
 			}

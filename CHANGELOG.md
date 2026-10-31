@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+* Capture every CLI/TUI/catalog script execution in private run history with
+  separate stdout/stderr, status or signal, timing, arguments, cwd, runner and
+  script hash. Keep live output, stdin and terminal colour detection using
+  independent output PTYs; add configurable byte caps, retention and opt-out.
+* Add cmd runs/runs-clear and run list/show/out/err/delete/rerun, a last-run
+  preview and H history chooser/output viewer (view.runs opt-out), and read-only
+  MCP run_list/run_show. Retain history through command deletion and undo.
+
 * Adopt the chartreuse List and run logo with reproducible production SVGs and
   byte-for-byte checks; add the family README header and an isolated VHS
   demo tape with five seeded commands and the recorded `assets/demo.gif`.
