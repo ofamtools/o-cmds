@@ -8,9 +8,9 @@
   "settings": {"view.detail": false},
   "script": ["R", "y", "u"],
   "expect": [
-    {"after": 0, "status": {"busy": "ran"}, "plain": ["busy"], "contains": ["Runs", "Last", "    2  "]},
+    {"after": 0, "status": {"busy": "ran"}, "plain": ["busy"], "contains": ["Last   Age      Runs  Author", "   2  owner"]},
     {"after": 1, "modal": true, "contains": ["Reset the run count of busy to 0?"]},
-    {"after": 2, "modal": false, "status": {"busy": "new"}, "toned": ["busy"], "contains": ["    0  -"], "runCount": 2},
-    {"after": 3, "status": {"busy": "ran"}, "plain": ["busy"], "contains": ["    2  "]}
+    {"after": 2, "modal": false, "status": {"busy": "new"}, "toned": ["busy"], "contains": ["-      now         0  owner"], "runCount": 2},
+    {"after": 3, "status": {"busy": "ran"}, "plain": ["busy"], "contains": ["   2  owner"]}
   ]
 }

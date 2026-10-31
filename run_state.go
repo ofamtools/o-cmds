@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"strconv"
 	"strings"
 	"time"
 
@@ -151,12 +150,11 @@ func validTone(v any) error {
 	return nil
 }
 
-func runCells(st runState, now time.Time) []string {
-	last := "-"
-	if st.Last != nil {
-		last = age(*st.Last, now)
+func lastCell(st runState, now time.Time) string {
+	if st.Last == nil {
+		return "-"
 	}
-	return []string{strconv.Itoa(st.Count), last}
+	return age(*st.Last, now)
 }
 
 func toneRow(tone string, cells int) []ochazuke.ToneSpan {

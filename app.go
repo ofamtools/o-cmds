@@ -47,8 +47,10 @@ type verbSpec struct {
 	cli               func(context.Context, []string) error
 }
 
-// cmdColumns are the command table's columns; runs adds the run count and
-// last-run age (view.run-columns), which narrow widths drop first.
+// cmdColumns are the command table's columns. runs adds Last (last-run
+// age, dropped first at narrow widths) and Runs (the count since reset),
+// second from the right before Author; Runs drops last of the optional
+// columns, so it shows beside the detail pane at 120 columns.
 func cmdColumns(runs bool) []ochazuke.Column {
 	cols := []ochazuke.Column{
 		{Title: "#", Width: 5, Align: ochazuke.AlignRight},
@@ -56,9 +58,13 @@ func cmdColumns(runs bool) []ochazuke.Column {
 		{Title: "Description", Min: 12},
 	}
 	if runs {
-		cols = append(cols, ochazuke.Column{Title: "Runs", Width: 4, Align: ochazuke.AlignRight, Priority: 3}, ochazuke.Column{Title: "Last", Width: 5, Priority: 4})
+		cols = append(cols, ochazuke.Column{Title: "Last", Width: 5, Priority: 4})
 	}
-	return append(cols, ochazuke.Column{Title: "Age", Width: 7, Priority: 2}, ochazuke.Column{Title: "Author", Max: 24, Priority: 1})
+	cols = append(cols, ochazuke.Column{Title: "Age", Width: 7, Priority: 3})
+	if runs {
+		cols = append(cols, ochazuke.Column{Title: "Runs", Width: 4, Align: ochazuke.AlignRight, Priority: 1})
+	}
+	return append(cols, ochazuke.Column{Title: "Author", Max: 24, Priority: 2})
 }
 
 // commandPage is the page the catalog publishes: its detail is built-in
@@ -371,9 +377,10 @@ func (a *App) rows(filter string) ([]ocli.Row, error) {
 		data["author_label"] = author
 		cells := []string{strconv.Itoa(i + 1), name, c.Description}
 		if a.runCols {
-			cells = append(cells, runCells(st, now)...)
+			cells = append(cells, lastCell(st, now), age(c.Created, now), strconv.Itoa(st.Count), author)
+		} else {
+			cells = append(cells, age(c.Created, now), author)
 		}
-		cells = append(cells, age(c.Created, now), author)
 		row := ocli.Row{Noun: "cmd", ID: "cmd/" + c.ID, Label: c.Name, Data: data, Cells: cells}
 		if st.Status == statusNew {
 			row.Tones = toneRow(tone, len(cells))

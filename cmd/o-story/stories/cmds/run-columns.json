@@ -5,6 +5,6 @@
   "settings": {"view.detail": false},
   "script": [],
   "expect": [
-    {"after": 0, "contains": ["Runs", "Last", "counted", "    3  "]}
+    {"after": 0, "contains": ["Last   Age      Runs  Author", "counted", "   3  owner"]}
   ]
 }

@@ -1,0 +1,9 @@
+{
+  "name": "with the detail pane open at 120 columns the Runs column still shows",
+  "commands": [{"name": "counted", "script": "true\n"}],
+  "runs": [{"command": "counted", "stdout": "a", "exitCode": 0}, {"command": "counted", "stdout": "b", "exitCode": 0}],
+  "script": [],
+  "expect": [
+    {"after": 0, "contains": ["Runs", "counted"]}
+  ]
+}

@@ -144,9 +144,12 @@ tone travels on the catalog rows, so mtm's Commands tab shows it too.
 
 Each row carries `status` (`new`, `ran` or `dismissed`), `runs` (runs since the
 last reset), `last_run_at` and `last_run_age`; every row field is a prop filter
-in ochazuke, so `z /` can filter `status = new`. The table shows them as the
-`Runs` and `Last` columns (`view.run-columns`, default on, read at start), which
-narrow widths drop first.
+in ochazuke, so `z /` can filter `status = new`. With `view.run-columns`
+(default on, read at start) the table reads `# Name Description Last Age Runs
+Author`: `Runs` is second from the right, before `Author`, and is the last of
+the optional columns to drop, so at 120 columns with the script pane open the
+list shows `# Name Description Runs`. Narrower lists drop `Last`, then `Age`,
+then `Author`.
 
 The count is durable: each started run adds one to a counter in the command's
 metadata, whatever `runs.keep` retains or prunes, and undo never lowers it.

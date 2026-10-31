@@ -241,7 +241,8 @@ func TestHostRowsCarryRunStateAndTone(t *testing.T) {
 		if n := got["ran"].Props["runs"]; n != float64(1) && n != 1 {
 			t.Fatalf("runs prop=%#v", n)
 		}
-		if got["ran"].Cells[3] != "1" || got["fresh"].Cells[4] != "-" {
+		// Runs is second from the right, before Author; Last follows Description.
+		if got["ran"].Cells[5] != "1" || got["fresh"].Cells[3] != "-" || got["fresh"].Cells[6] != "owner" {
 			t.Fatalf("run cells ran=%v fresh=%v", got["ran"].Cells, got["fresh"].Cells)
 		}
 	}
@@ -254,5 +255,19 @@ func TestHostRowsCarryRunStateAndTone(t *testing.T) {
 	rows, e := a.rows("")
 	if e != nil || len(rows[0].Cells) != 5 {
 		t.Fatalf("cells without run columns %v %v", rows, e)
+	}
+}
+
+// Runs sits second from the right and outlasts the other optional columns,
+// so it shows beside the detail pane at the default 120 columns.
+func TestRunsColumnPlacement(t *testing.T) {
+	cols := cmdColumns(true)
+	if cols[len(cols)-2].Title != "Runs" || cols[len(cols)-1].Title != "Author" {
+		t.Fatalf("columns=%v", cols)
+	}
+	for _, c := range cols {
+		if c.Title != "Runs" && c.Priority != 0 && c.Priority <= cols[len(cols)-2].Priority {
+			t.Fatalf("%s drops after Runs", c.Title)
+		}
 	}
 }
