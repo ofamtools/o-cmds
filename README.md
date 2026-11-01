@@ -27,28 +27,29 @@ by the family's `o` and `mtm` commands, just like `o-gh` or `o-git`.
 Install with the Go version in [go.mod](go.mod) or newer:
 
 ```sh
+go install ofam.dev/oden/cmd/o@latest   # oden's o: o cmds runs o-cmds, no dash needed
 go install ofam.dev/o-cmds@latest
 ```
 
 With the installed binary on PATH:
 
 ```sh
-printf 'printf "hello %%s\\n" "$1"\n' | o-cmds cmd add --name hello --desc 'Say hello'
-printf 'pwd\n' | o-cmds cmd add --name where --desc 'Show the current directory'
-o-cmds cmd list
-o-cmds cmd show hello
-o-cmds cmd run hello -- 'Ada Lovelace'
-o-cmds cmd run 2                 # names or displayed numbers: NAME|N
-o-cmds                           # standalone TUI, selected on newest
-o-cmds pick hello                # print a script without running it
-o-cmds pick                      # choose a script in the TUI
-o-cmds shell-init zsh            # print an optional current-shell helper
-o-cmds mcp                       # serve add/list/show over stdio JSON-RPC
+printf 'printf "hello %%s\\n" "$1"\n' | o cmds cmd add --name hello --desc 'Say hello'
+printf 'pwd\n' | o cmds cmd add --name where --desc 'Show the current directory'
+o cmds cmd list
+o cmds cmd show hello
+o cmds cmd run hello -- 'Ada Lovelace'
+o cmds cmd run 2                 # names or displayed numbers: NAME|N
+o cmds                           # standalone TUI, selected on newest
+o cmds pick hello                # print a script without running it
+o cmds pick                      # choose a script in the TUI
+o cmds shell-init zsh            # print an optional current-shell helper
+o cmds mcp                       # serve add/list/show over stdio JSON-RPC
 ```
 
 Use `cmd add --file ./some-script.sh --name inspect --cwd /path/to/project`
-to record a file and its working directory. `o-cmds catalog` prints the JSON
-catalog for mtm/nabe; `o-cmds view --smoke` renders one frame without a terminal.
+to record a file and its working directory. `o cmds catalog` prints the JSON
+catalog for mtm/nabe; `o cmds view --smoke` renders one frame without a terminal.
 The [demo tape](docs/vhs/README.md) records the header animation.
 
 `cmd list` prints numbered columns: name, description, age, author. Numbers are
@@ -68,22 +69,22 @@ The pinned oden v0.1.1 supports exact/prefix matching only. Dash-segment forms
 extension; they are not implemented by a separate app matcher.
 
 ```sh
-o-cmds cmd show 1
-o-cmds cmd copy hello            # print the exact script bytes
-o-cmds cmd copy hello --yank     # also copy to the clipboard
-EDITOR='code --wait' o-cmds cmd edit hello
-o-cmds cmd rename hello greeting
-o-cmds cmd pin greeting          # show a star, keep chronological position
-o-cmds cmd star greeting         # toggle the pin
-o-cmds cmd unpin greeting
-o-cmds cmd delete greeting       # hide; keep script and history
-o-cmds cmd undo                  # restore the most recent change
-o-cmds cmd path greeting         # script path
-o-cmds cmd path                  # storage directory
-o-cmds cmd list --filter deploy
-o-cmds cmd list --json '{}'      # catalog rows, including script/metadata
-o-cmds cmd list --format table   # framework table output
-o-cmds cmd add --name report --script 'pwd' --tags '["work","daily"]'
+o cmds cmd show 1
+o cmds cmd copy hello            # print the exact script bytes
+o cmds cmd copy hello --yank     # also copy to the clipboard
+EDITOR='code --wait' o cmds cmd edit hello
+o cmds cmd rename hello greeting
+o cmds cmd pin greeting          # show a star, keep chronological position
+o cmds cmd star greeting         # toggle the pin
+o cmds cmd unpin greeting
+o cmds cmd delete greeting       # hide; keep script and history
+o cmds cmd undo                  # restore the most recent change
+o cmds cmd path greeting         # script path
+o cmds cmd path                  # storage directory
+o cmds cmd list --filter deploy
+o cmds cmd list --json '{}'      # catalog rows, including script/metadata
+o cmds cmd list --format table   # framework table output
+o cmds cmd add --name report --script 'pwd' --tags '["work","daily"]'
 ```
 
 Runs use `sh SCRIPT ARG...`, with the recorded cwd if present. Otherwise they
@@ -96,10 +97,10 @@ preserved, including when the script is empty or has no trailing newline.
 ## Stdin from a file or editor
 
 ```sh
-o-cmds cmd run hello --stdin ./input.txt -- argument
-o-cmds cmd run hello --edit-stdin -- argument
-o-cmds cmd rerun hello             # latest run, including its input source
-o-cmds run in 1                    # exact retained input bytes
+o cmds cmd run hello --stdin ./input.txt -- argument
+o cmds cmd run hello --edit-stdin -- argument
+o cmds cmd rerun hello             # latest run, including its input source
+o cmds run in 1                    # exact retained input bytes
 ```
 
 On a command row, `g i` opens ochazuke's file chooser at the caller's current
@@ -156,10 +157,10 @@ metadata, whatever `runs.keep` retains or prunes, and undo never lowers it.
 Commands recorded before the counter count their retained run records.
 
 ```sh
-o-cmds cmd dismiss greeting      # x: mark seen without running (not new)
-o-cmds cmd undismiss greeting    # X: new again
-o-cmds cmd reset greeting --yes  # R: run count to 0, new again (asks first)
-o-cmds cmd undo                  # u: restores either
+o cmds cmd dismiss greeting      # x: mark seen without running (not new)
+o cmds cmd undismiss greeting    # X: new again
+o cmds cmd reset greeting --yes  # R: run count to 0, new again (asks first)
+o cmds cmd undo                  # u: restores either
 ```
 
 `x`, `X` and `R` act on every row of a `V` selection as one undo step. `reset`
@@ -175,14 +176,14 @@ be captured by o-cmds**. Shell command history and captured run history are
 separate things.
 
 ```sh
-o-cmds cmd runs hello             # command name, abbreviation or number
-o-cmds run list                   # all runs, including deleted commands
-o-cmds run show 1                 # metadata and labelled stdin/stdout/stderr
-o-cmds run out 1                  # exact captured stdout, for piping
-o-cmds run err 1                  # exact captured stderr, for piping
-o-cmds run rerun 1                # current script, original args, cwd and input
-o-cmds run delete 1               # remove record and captured streams
-o-cmds cmd runs-clear hello       # remove all of this command's runs
+o cmds cmd runs hello             # command name, abbreviation or number
+o cmds run list                   # all runs, including deleted commands
+o cmds run show 1                 # metadata and labelled stdin/stdout/stderr
+o cmds run out 1                  # exact captured stdout, for piping
+o cmds run err 1                  # exact captured stderr, for piping
+o cmds run rerun 1                # current script, original args, cwd and input
+o cmds run delete 1               # remove record and captured streams
+o cmds cmd runs-clear hello       # remove all of this command's runs
 ```
 
 Runs list oldest first, newest at the bottom, independently of `list.order`.
@@ -307,31 +308,31 @@ setting-cycle verb and applies to the current session; persist your preferred
 default through the settings command. Default order is oldest-first, with the
 newest command at the bottom.
 
-Optional shell convenience: `o-cmds pick` opens the same Commands page, with
+Optional shell convenience: `o cmds pick` opens the same Commands page, with
 Enter choosing the script and exiting instead of running it. Escape cancels
 with non-zero status and no stdout. The UI renders on stderr, so stdout holds
-only the selected script. `o-cmds pick NAME|NUMBER` prints that script directly,
+only the selected script. `o cmds pick NAME|NUMBER` prints that script directly,
 using the same name/number resolver. Picking does not execute the script.
 
 To evaluate selected commands in your current Zsh session, add this optional
 line to `~/.zshrc` yourself:
 
 ```sh
-eval "$(o-cmds shell-init zsh)"
+eval "$(o cmds shell-init zsh)"
 ```
 
-For Bash, use `eval "$(o-cmds shell-init bash)"` in your shell startup file.
+For Bash, use `eval "$(o cmds shell-init bash)"` in your shell startup file.
 This defines `oc`; `--name` changes the function name:
 
 ```sh
 oc                          # pick, record in history, and evaluate here
 oc hello                    # evaluate a named command directly
 oc 2                        # evaluate a numbered command directly
-eval "$(o-cmds shell-init zsh --name choose_command)"
+eval "$(o cmds shell-init zsh --name choose_command)"
 choose_command hello        # use a different function name
 ```
 
-The generated function calls `o-cmds pick`, records the chosen script in shell
+The generated function calls `o cmds pick`, records the chosen script in shell
 history, and evaluates it in the current shell, so `cd` and `export` persist.
 Cancellation returns the picker's status without evaluating or adding a history
 entry. Evaluation returns the script's status. The function preserves script
@@ -345,11 +346,11 @@ TUI and MCP work without it. `shell-init` only prints the function; it edits no
 dotfiles, installs no hooks, and needs `o-cmds` on PATH when the function runs.
 
 ```sh
-o-cmds settings set list.order newest-first --yes
-o-cmds settings set list.start-newest false --yes
-o-cmds settings set view.detail false --yes
-o-cmds settings set view.detail-style markdown --yes
-o-cmds settings set list.refresh 0s --yes
+o cmds settings set list.order newest-first --yes
+o cmds settings set list.start-newest false --yes
+o cmds settings set view.detail false --yes
+o cmds settings set view.detail-style markdown --yes
+o cmds settings set list.refresh 0s --yes
 ```
 
 Defaults: `list.order=oldest-first`, `list.start-newest=true`,
