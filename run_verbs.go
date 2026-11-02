@@ -122,7 +122,7 @@ func (a *App) commandRuns(_ ochazuke.Ctx, c Command) ochazuke.Result {
 			}
 			choices = append(choices, ochazuke.ChooserRow{ID: r.ID, Label: runSummary(r), Data: r.ID, Cells: []string{strconv.Itoa(row.Number), runSummary(r)}, Tones: []ochazuke.ToneSpan{{Cell: 1, Tone: tone}}})
 		}
-		_, e := a.r.OpenChooser(ochazuke.ChooserSpec{Kind: "run-history", Title: "Runs: " + c.Name, Rows: choices, Empty: "No recorded runs", Preview: func(row ochazuke.ChooserRow) string {
+		_, e := a.r.OpenChooser(ochazuke.ChooserSpec{Kind: "run-history", Title: "Runs: " + c.Name, Rows: choices, Plural: "runs", Empty: "no recorded runs", Preview: func(row ochazuke.ChooserRow) string {
 			r, e := a.store.ReadRun(row.ID)
 			if e != nil {
 				return e.Error()

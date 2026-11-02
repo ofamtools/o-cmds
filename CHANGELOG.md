@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+* Upgrade ochazuke to v0.83.0; the script viewer uses shared modal closing and
+  window-sized page/edge motions (`gg`, `G`, Ctrl-D/U/F/B), and empty run text
+  follows the framework's placeholder format.
+
 * New commands stand out: a command never run and not dismissed draws in the
   tone `view.new-tone` names (default `marker.queued`; empty turns it off). The
   tone rides on the catalog rows, so mtm's Commands tab shows it too. Rows carry

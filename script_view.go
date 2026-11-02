@@ -77,7 +77,7 @@ func (v *scriptDetail) Block(width, height int) ochazuke.Block {
 		return ochazuke.Text("")
 	}
 	if !v.valid {
-		return ochazuke.Text("No command selected")
+		return ochazuke.Text("no command selected")
 	}
 	c := v.command
 	author := c.Author.Name
@@ -113,7 +113,13 @@ type scriptViewer struct {
 	detail      *ochazuke.Detail
 }
 
-func (v *scriptViewer) ModalTitle() string { return v.title }
+func (v *scriptViewer) ModalTitle() string                { return v.title }
+func (v *scriptViewer) MotionEdges() []ochazuke.SpillEdge { return v.detail.MotionEdges() }
+func (v *scriptViewer) MoveToEdge(edge ochazuke.SpillEdge, row int) {
+	v.detail.MoveToEdge(edge, row)
+}
+func (v *scriptViewer) PageLines() int     { return v.detail.PageLines() }
+func (v *scriptViewer) MovePage(lines int) { v.detail.MovePage(lines) }
 func (v *scriptViewer) ModalBlock(styles ochazuke.Styles, width, height int) ochazuke.Block {
 	body, marker := v.detail.Window(scriptAtWidth(v.text, width), 0, max(0, height-1))
 	header := marker + strings.Repeat(" ", max(0, width-ansi.StringWidth(marker)))
@@ -134,10 +140,9 @@ func registerScriptViewer(r *ochazuke.Runtime) {
 	for _, row := range []struct {
 		key   string
 		lines int
-	}{{"j", 1}, {"k", -1}, {"ctrl+d", 8}, {"ctrl+u", -8}, {"g", -1_000_000_000}, {"G", 1_000_000_000}} {
+	}{{"j", 1}, {"k", -1}} {
 		b.Bind(row.key, ochazuke.Do("ochazuke.detail.scroll", ochazuke.Arguments{"id": scriptViewerTextID, "lines": row.lines}).FromPayload("count", "count").Captured())
 	}
-	b.Bind("q", ochazuke.Do("ochazuke.modal.pop")).Bind("esc", ochazuke.Do("ochazuke.modal.pop"))
 }
 
 func openScriptViewer(r *ochazuke.Runtime, title, source string) error {
