@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+* Declare retained `cmd.delete` agent-never and add repeatable, undoable `cmd.archive`/`cmd.restore` through the same soft-delete flag handler. Open `cmd.reset` for agents while retaining run records. Mark `run.delete` and `cmd.runs-clear` Destructive so catalog hosts and the standalone gate refuse stream loss. Mutation/undo snapshots retain the acting framework identity; original authors remain unchanged. `list.hide-archived` defaults to true and opts out of hiding command rows.
+
 * Upgrade ochazuke to v0.83.0; the script viewer uses shared modal closing and
   window-sized page/edge motions (`gg`, `G`, Ctrl-D/U/F/B), and empty run text
   follows the framework's placeholder format.

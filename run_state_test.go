@@ -177,19 +177,6 @@ func TestDismissResetUndo(t *testing.T) {
 	}
 }
 
-func TestRunVerbRights(t *testing.T) {
-	a, _, _ := historyApp(t, fixture(t))
-	for verb, want := range map[string]string{"cmd.dismiss": ochazuke.AgentAllow, "cmd.undismiss": ochazuke.AgentAllow, "cmd.reset": ochazuke.AgentNever} {
-		op := a.r.Operations[verb]
-		if op.Agent != want || !op.Many {
-			t.Fatalf("%s agent=%q many=%v", verb, op.Agent, op.Many)
-		}
-	}
-	if a.r.Operations["cmd.reset"].Confirm == "" || a.r.Operations["cmd.dismiss"].Confirm != "" {
-		t.Fatal("reset confirms, dismiss does not")
-	}
-}
-
 // Hosts (mtm) mount the published catalog page: the rows carry the run
 // props and the new tone, so the colour reaches them with no o-cmds code.
 func TestHostRowsCarryRunStateAndTone(t *testing.T) {

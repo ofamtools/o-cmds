@@ -15,6 +15,7 @@ import (
 	"unicode"
 
 	"golang.org/x/sys/unix"
+	"ofam.dev/ochazuke"
 	"ofam.dev/oden"
 )
 
@@ -82,8 +83,9 @@ func stampAuthor(getenv func(string) string, fallback string) Author {
 }
 
 type Store struct {
-	Dir string
-	Now func() time.Time
+	Dir   string
+	Now   func() time.Time
+	Actor ochazuke.Actor
 }
 
 func dataDir() (string, error) {
@@ -187,7 +189,7 @@ func (s *Store) metadata(c Command) error {
 	return atomicJSON(filepath.Join(s.Dir, c.ID+".json"), c)
 }
 
-func (s *Store) list() ([]Command, error) {
+func (s *Store) list(includeArchived bool) ([]Command, error) {
 	files, err := os.ReadDir(s.Dir)
 	if err != nil {
 		return nil, err
@@ -214,7 +216,7 @@ func (s *Store) list() ([]Command, error) {
 		}
 		c.ID = id
 		c.Path = s.path(id)
-		if !c.Deleted {
+		if includeArchived || !c.Deleted {
 			out = append(out, c)
 		}
 	}
@@ -227,8 +229,10 @@ func (s *Store) list() ([]Command, error) {
 	return out, nil
 }
 
-func (s *Store) List() (out []Command, err error) {
-	err = s.locked(func() error { out, err = s.list(); return err })
+func (s *Store) List() ([]Command, error) { return s.records(false) }
+
+func (s *Store) records(includeArchived bool) (out []Command, err error) {
+	err = s.locked(func() error { out, err = s.list(includeArchived); return err })
 	return
 }
 
@@ -238,7 +242,7 @@ func uniqueName(name string, rows []Command, except string) string {
 	}
 	used := map[string]bool{}
 	for _, c := range rows {
-		if c.ID != except {
+		if c.ID != except && !c.Deleted {
 			used[c.Name] = true
 		}
 	}
@@ -257,7 +261,7 @@ type Add struct {
 
 func (s *Store) Add(a Add) (c Command, err error) {
 	err = s.locked(func() error {
-		rows, e := s.list()
+		rows, e := s.list(false)
 		if e != nil {
 			return e
 		}
@@ -306,13 +310,24 @@ func (s *Store) Add(a Add) (c Command, err error) {
 func resolve(rows []Command, target string) (Command, error) {
 	// Names win over numbers, so a command called "2" remains reachable.
 	for _, c := range rows {
+		if !c.Deleted && c.Name == target {
+			return c, nil
+		}
+	}
+	for _, c := range rows {
 		if c.Name == target || c.ID == strings.TrimPrefix(target, "cmd/") {
 			return c, nil
 		}
 	}
 	if n, e := strconv.Atoi(target); e == nil {
-		if n > 0 && n <= len(rows) {
-			return rows[n-1], nil
+		for _, row := range rows {
+			if row.Deleted {
+				continue
+			}
+			n--
+			if n == 0 {
+				return row, nil
+			}
 		}
 		return Command{}, fmt.Errorf("command number %q not found", target)
 	}
@@ -346,7 +361,7 @@ func resolve(rows []Command, target string) (Command, error) {
 }
 
 func (s *Store) Resolve(target string, newestFirst bool) (Command, error) {
-	rows, err := s.List()
+	rows, err := s.records(true)
 	if err != nil {
 		return Command{}, err
 	}
@@ -362,10 +377,12 @@ func (s *Store) Script(c Command) (string, error) {
 }
 
 type Snapshot struct {
-	Command Command   `json:"command"`
-	Script  string    `json:"script"`
-	At      time.Time `json:"at"`
-	Undone  bool      `json:"undone"`
+	Command  Command         `json:"command"`
+	Script   string          `json:"script"`
+	At       time.Time       `json:"at"`
+	Undone   bool            `json:"undone"`
+	By       ochazuke.Actor  `json:"by"`
+	UndoneBy *ochazuke.Actor `json:"undone_by,omitempty"`
 	// Batch groups the snapshots of one change over several commands
 	// (ChangeAll): undo restores them together.
 	Batch string `json:"batch,omitempty"`
@@ -391,7 +408,7 @@ func (s *Store) checkpoint(c Command, batch ...string) error {
 			next = n + 1
 		}
 	}
-	snap := Snapshot{Command: c, Script: text, At: s.now()}
+	snap := Snapshot{Command: c, Script: text, At: s.now(), By: s.Actor}
 	if len(batch) > 0 {
 		snap.Batch = batch[0]
 	}
@@ -400,7 +417,7 @@ func (s *Store) checkpoint(c Command, batch ...string) error {
 
 func (s *Store) Change(id string, change func(*Command, []Command)) (c Command, err error) {
 	err = s.locked(func() error {
-		rows, e := s.list()
+		rows, e := s.list(true)
 		if e != nil {
 			return e
 		}
@@ -421,7 +438,7 @@ func (s *Store) Change(id string, change func(*Command, []Command)) (c Command, 
 // snapshots share a batch, so one undo restores every one of them.
 func (s *Store) ChangeAll(ids []string, change func(*Command, []Command)) (out []Command, err error) {
 	err = s.locked(func() error {
-		rows, e := s.list()
+		rows, e := s.list(true)
 		if e != nil {
 			return e
 		}
@@ -463,7 +480,7 @@ func (s *Store) stored(id string) (c Command, ok bool) {
 // snapshot; a command still without a total starts from its retained runs.
 func (s *Store) CountRun(id string, at time.Time) error {
 	return s.locked(func() error {
-		rows, e := s.list()
+		rows, e := s.list(true)
 		if e != nil {
 			return e
 		}
@@ -554,7 +571,7 @@ func (s *Store) restore(snap Snapshot, path string) (Command, error) {
 	if cur, ok := s.stored(c.ID); ok {
 		c.RunsTotal, c.LastRunAt = cur.RunsTotal, cur.LastRunAt
 	}
-	rows, e := s.list()
+	rows, e := s.list(false)
 	if e != nil {
 		return c, e
 	}
@@ -566,5 +583,6 @@ func (s *Store) restore(snap Snapshot, path string) (Command, error) {
 		return c, e
 	}
 	snap.Undone = true
+	snap.UndoneBy = &s.Actor
 	return c, atomicJSON(path, snap)
 }

@@ -54,7 +54,7 @@ func (a *App) runSpecs() []verbSpec {
 			e := a.store.DeleteRun(r.ID)
 			a.refresh()
 			return result(nil, e)
-		})},
+		}), destructive: true},
 		{name: "rerun", foreground: true, description: "Execute the current saved script with the run's args, cwd and stdin", params: target, positional: []string{"run"}, handler: a.onRun(a.rerun), cli: a.rerunCLI},
 	}
 }

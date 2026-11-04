@@ -79,6 +79,8 @@ o cmds cmd star greeting         # toggle the pin
 o cmds cmd unpin greeting
 o cmds cmd delete greeting       # hide; keep script and history
 o cmds cmd undo                  # restore the most recent change
+o cmds cmd archive greeting      # agents hide without deleting
+o cmds cmd restore greeting      # restore the retained command
 o cmds cmd path greeting         # script path
 o cmds cmd path                  # storage directory
 o cmds cmd list --filter deploy
@@ -167,6 +169,17 @@ o cmds cmd undo                  # u: restores either
 only resets the counter: retained run records stay (`cmd runs-clear` deletes
 them), and undoing a reset restores the old count plus any runs since.
 
+Agents may read and write, including `cmd.reset`; an allowed agent call passes
+its confirmation prompt. `cmd.delete` is declared agent-never even though it
+only hides. Use `cmd.archive` and `cmd.restore`, which share the retained flag
+handler. `run.delete` and `cmd.runs-clear` are destructive and agent-never
+because they remove captured streams. Owner `agents.rights` rules still apply.
+
+`list.hide-archived` defaults to true; false includes archived command rows.
+Archived rows have `-` in the number column, leaving live positional numbers
+unchanged. Target archived commands by name or stable ID. Archive and restore
+are repeatable and undoable. Restore adds a suffix if the name is occupied.
+
 ## Run history
 
 Every script executed by `cmd run`, the standalone TUI, or the catalog's
@@ -192,8 +205,8 @@ numbers change after pruning/deletion. A stable `run/ID`, exact ID or unique ID
 prefix also works. Ambiguous prefixes fail without executing anything.
 `run list NAME|N` filters by command; `run show/in/out/err/delete/rerun` accept
 `--run RUN` as well as a positional target. Machine clients can use `--json`.
-`rerun` requires the command still to exist; undo its deletion first. It uses
-the current script, and records its current hash rather than restoring old code.
+`rerun` requires the retained command and its script to exist. It uses the
+current script and records its current hash rather than restoring old code.
 
 The `stdin` metadata object records `kind` (`none`, `file`, `edited`), source
 `path`, full `bytes` and SHA-256 `sha`, plus `kept` and `truncated`. These describe
@@ -286,7 +299,7 @@ The script itself is an ordinary editable file. `edit` checkpoints it before
 opening `$VISUAL`, else `$EDITOR` (default `vi`); the selected editor controls
 its own writing.
 Metadata changes commit immediately. `undo` restores the last rename, delete,
-edit checkpoint, pin, dismiss or reset change, including the saved script bytes;
+archive, restore, edit checkpoint, pin, dismiss or reset change, including saved script bytes;
 a change over a `V` selection is one undo step. It does not
 undo execution. If a restored name is occupied, restoration uses a suffix.
 
@@ -296,6 +309,9 @@ a `<created-ts>-<slug>-<random-id>.sh` and JSON sidecar with name, description,
 created time, author, optional cwd, tags and pin status. Script and metadata
 permissions are `0600`; newly created storage/history directories are `0700`.
 A file lock coordinates concurrent writers. `.history` holds undo snapshots.
+Snapshots retain the acting framework identity in `by`, including model,
+harness, pane and session; undo also records `undone_by`. The original command
+author remains unchanged.
 Deletion is a metadata flag; scripts are retained. An interrupted add that
 leaves only a script is still listed as unassociated. Failed atomic writes
 retain hidden `.pending-*` recovery files.
@@ -404,8 +420,8 @@ MCP lets agents leave commands for the owner:
 
 The stdio server exposes `cmd_add`, `cmd_list`, `cmd_show`, `cmd_dismiss`,
 `cmd_undismiss`, `run_list` and `run_show` (`cmd_dismiss`/`cmd_undismiss` take
-`target`; dismissing is harmless and undoable, so agents may; `cmd reset` is
-never offered and its agent right is `never`). It has **no execution or run-deletion tools**. `cmd_add` requires `script` (empty is valid), and accepts
+`target`; dismissing is undoable, and reset is allowed through the CLI/catalog
+but remains absent from this curated MCP server). It has **no execution or run-deletion tools**. `cmd_add` requires `script` (empty is valid), and accepts
 `name`, `desc`, `cwd`, `tags` and `author`. `cmd_list` takes optional `filter`;
 `cmd_show` takes `target` (a name, number as a string, or stable ID).
 `run_list` takes optional `command` (name, number or ID); `run_show` requires

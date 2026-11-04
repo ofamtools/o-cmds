@@ -42,6 +42,7 @@ type verbSpec struct {
 	handler           ochazuke.AppHandler
 	rows              bool
 	many              bool
+	destructive       bool
 	confirm, agent    string
 	output            string
 	text, foreground  bool
@@ -113,7 +114,10 @@ func newApp(s *Store, in io.Reader, out, errOut io.Writer) (*App, error) {
 		return nil, err
 	}
 	for _, spec := range a.verbs() {
-		b := a.r.Define(spec.noun).Verb(spec.name, spec.handler, spec.description)
+		b := a.r.Define(spec.noun).Verb(spec.name, func(c ochazuke.Ctx) ochazuke.Result {
+			a.store.Actor = c.Actor()
+			return spec.handler(c)
+		}, spec.description)
 		if len(spec.positional) > 0 {
 			b.Positional(spec.positional...)
 		}
@@ -134,6 +138,9 @@ func newApp(s *Store, in io.Reader, out, errOut io.Writer) (*App, error) {
 		}
 		if spec.agent != "" {
 			b.Agent(spec.agent)
+		}
+		if spec.destructive {
+			b.Destructive()
 		}
 		op := a.r.Operations[spec.noun+"."+spec.name]
 		op.Parameters = spec.params
@@ -211,7 +218,7 @@ func (a *App) specs() []verbSpec {
 		}},
 		{name: "rerun", foreground: true, description: "Repeat the latest run with its original args, cwd and stdin", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.rerunLast), cli: a.rerunLastCLI, enabled: "view.runs"},
 		{name: "runs", description: "List a command's run history, newest at the bottom", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.commandRuns), output: "run-table"},
-		{name: "runs-clear", description: "Remove a command's captured run history", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.clearRuns)},
+		{name: "runs-clear", description: "Remove a command's captured run history", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.clearRuns), destructive: true},
 		{name: "add", description: "Record a shell script, including an empty or unassociated one", params: map[string]ochazuke.Parameter{"name": param("Name; duplicates receive a suffix"), "desc": param("Description"), "file": param("Read script from file; otherwise script or stdin"), "script": param("Script text"), "cwd": param("Working directory; absence is allowed"), "tags": {Type: "array", Description: "Tags"}, "author": param("Author name; defaults to agent environment or owner")}, handler: a.add},
 		{name: "list", description: "List numbered commands; newest at the bottom by default", params: map[string]ochazuke.Parameter{"filter": param("Match name, description or tags")}, handler: a.list, rows: true, output: "table"},
 		{name: "show", description: "Show a command's script and metadata", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.show), output: "script"},
@@ -219,11 +226,13 @@ func (a *App) specs() []verbSpec {
 		{name: "copy", description: "Print the script, or --yank it to the clipboard", params: map[string]ochazuke.Parameter{"target": target, "yank": {Type: "boolean", Description: "Copy to clipboard"}}, positional: []string{"target"}, handler: a.on(a.copy), output: "script"},
 		{name: "edit", foreground: true, description: "Open $VISUAL/$EDITOR on the script; checkpoint its current contents for undo", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.edit)},
 		{name: "rename", description: "Rename immediately; duplicates receive a suffix", params: map[string]ochazuke.Parameter{"target": target, "name": param("New name")}, positional: []string{"target", "name"}, handler: a.on(a.rename)},
-		{name: "delete", description: "Hide a command immediately, retaining its script and undo history", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.delete)},
-		{name: "undo", description: "Undo the most recent rename, delete, edit, pin, dismiss or reset change", handler: a.undo},
+		{name: "delete", description: "Hide a command immediately, retaining its script and undo history; agents use cmd.archive", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.archive(true)), agent: ochazuke.AgentNever},
+		{name: "archive", description: "Hide a command, retaining its script and undo history", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.archive(true)), agent: ochazuke.AgentAllow},
+		{name: "restore", description: "Restore an archived command by name or stable ID", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.archive(false)), agent: ochazuke.AgentAllow},
+		{name: "undo", description: "Undo the most recent rename, delete, archive, restore, edit, pin, dismiss or reset change", handler: a.undo},
 		{name: "dismiss", description: "Mark a command (or the selected rows) seen without running it, so it no longer reads as new", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.dismiss(), many: true, agent: ochazuke.AgentAllow},
 		{name: "undismiss", description: "Mark a dismissed command (or the selected rows) new again", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.undismiss(), many: true, agent: ochazuke.AgentAllow},
-		{name: "reset", description: "Forget a command's runs: count to 0, new again; retained run records stay (cmd runs-clear deletes them)", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.reset(), many: true, confirm: "Reset the run count of {{label}} to 0? Retained run records stay; undo restores the count.", agent: ochazuke.AgentNever},
+		{name: "reset", description: "Forget a command's runs: count to 0, new again; retained run records stay (cmd runs-clear deletes them)", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.reset(), many: true, confirm: "Reset the run count of {{label}} to 0? Retained run records stay; undo restores the count.", agent: ochazuke.AgentAllow},
 		{name: "pin", description: "Pin a command without moving its chronological position", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.pin(true))},
 		{name: "unpin", description: "Unpin a command", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.pin(false))},
 		{name: "star", description: "Toggle a command's pin", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.star)},
@@ -330,7 +339,7 @@ func age(at, now time.Time) string {
 }
 
 func (a *App) rows(filter string) ([]ocli.Row, error) {
-	cs, e := a.store.List()
+	cs, e := a.store.records(!a.r.Settings().Bool("list.hide-archived"))
 	if e != nil {
 		return nil, e
 	}
@@ -350,7 +359,13 @@ func (a *App) rows(filter string) ([]ocli.Row, error) {
 		}
 	}
 	tone, now := a.newTone(), a.store.now()
-	for i, c := range cs {
+	number := 0
+	for _, c := range cs {
+		cellNumber := "-"
+		if !c.Deleted {
+			number++
+			cellNumber = strconv.Itoa(number)
+		}
 		if !strings.Contains(strings.ToLower(c.Name+" "+c.Description+" "+strings.Join(c.Tags, " ")), filter) {
 			continue
 		}
@@ -392,7 +407,7 @@ func (a *App) rows(filter string) ([]ocli.Row, error) {
 			author += "@" + c.Author.Pane
 		}
 		data["author_label"] = author
-		cells := []string{strconv.Itoa(i + 1), name, c.Description}
+		cells := []string{cellNumber, name, c.Description}
 		if a.runCols {
 			cells = append(cells, lastCell(st, now), age(c.Created, now), strconv.Itoa(st.Count), author)
 		} else {
@@ -501,8 +516,15 @@ func (a *App) rename(c ochazuke.Ctx, row Command) ochazuke.Result {
 		v.Name = uniqueName(ochazuke.StringArg(c.Args, "name", ""), rows, v.ID)
 	})
 }
-func (a *App) delete(_ ochazuke.Ctx, row Command) ochazuke.Result {
-	return a.change(row, func(v *Command, _ []Command) { v.Deleted = true })
+func (a *App) archive(value bool) func(ochazuke.Ctx, Command) ochazuke.Result {
+	return func(_ ochazuke.Ctx, row Command) ochazuke.Result {
+		return a.change(row, func(v *Command, rows []Command) {
+			v.Deleted = value
+			if !value {
+				v.Name = uniqueName(v.Name, rows, v.ID)
+			}
+		})
+	}
 }
 func (a *App) pin(value bool) func(ochazuke.Ctx, Command) ochazuke.Result {
 	return func(_ ochazuke.Ctx, row Command) ochazuke.Result {

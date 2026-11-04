@@ -1,11 +1,14 @@
 # Code map
 
 * `main.go`: global data override, oden dispatch, CLI stream/output adapters.
-* `app.go`: command noun, shared verbs and parameters, bindings, settings,
-  catalog page and row formatting.
+* `app.go`: command noun, shared verbs and parameters, declarative agent and
+  destruction metadata, transport-bound mutation identity, archive/restore flag
+  handler, bindings, settings, catalog page and row formatting. Custom rows
+  honour `list.hide-archived`; archived records use names/IDs, not live numbers.
 * `store.go`: per-command files, author stamps, lock, duplicate suffixes,
-  retained deletion, undo snapshots (batched for selections; the run counter
-  is never rolled back) and the durable run counter.
+  retained deletion, archive-aware resolution, actor-attributed undo snapshots
+  and receipts (batched for selections; the run counter is never rolled back)
+  and the durable run counter.
 * `stdin.go`: explicit input descriptors, hashing/capped snapshots, shared
   path chooser with retained recent inputs, private editor buffer lifecycle.
 * `process.go`: injectable process runner, sh/editor/clipboard commands.
@@ -33,6 +36,9 @@
   command add/list/show/dismiss/undismiss and read-only run list/show, never
   execution or reset.
 * `*_test.go`: isolated store, CLI, MCP and model-dispatch behavior checks.
+* `rights_archive_test.go`: agent archive/restore/reset round trips, retained
+  scripts/streams, snapshot attribution, visibility/numbering opt-out, name
+  collisions and the published catalog rights/destruction contract.
 * `script_stories_test.go`: executes app story fixtures against the mounted
   page and effective bindings, with optional rendered-frame artifacts.
 * `host_mount_test.go`: mounts the published page as an external host does.
