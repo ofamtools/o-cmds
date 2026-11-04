@@ -16,6 +16,8 @@ has not been migrated.
 | `H` | `cmd.history`, `foreground: true` | Full-screen o-cmds history with the existing chooser and output preview; closing its last modal returns to the host |
 | `e` | `cmd.edit`, `foreground: true` | `$VISUAL`/`$EDITOR` receives a real terminal, including stdin |
 | `g e` | `cmd.edit-stdin`, `foreground: true` | Editor and script run receive the terminal |
+| `g i` | `cmd.run-file`, required path `stdin`, result `text` | Host's existing required-path chooser, then a captured output viewer; standalone retains its native stdin picker |
+| `g r` | `cmd.rerun`, `foreground: true` | Rerun with original args/cwd/stdin on the terminal; output remains in recorded history |
 
 `cmd.run` remains a foreground streaming command for CLI and palette use.
 `cmd.show` still returns the command record with its script to MCP/CLI;
@@ -23,8 +25,9 @@ has not been migrated.
 stdout, stderr and metadata as text. No dual-form result protocol is needed.
 
 `keys.text-results` (ochazuke, default `true`) controls automatic text viewers
-on key runs. `palette.text-results` retains the shared text presentation
-policy. `view.runs` still controls history, and `view.stdin` its stdin actions.
+on key runs. `palette.text-results=plain` disables text viewers in both paths;
+`all` broadens only palette results, never ordinary key answers.
+`view.runs` still controls history, and `view.stdin` its stdin actions.
 A failed script's captured output and exit status are readable; a process
 start or storage failure is reported as an error. Captured host execution has
 mtm's 60-second deadline. Foreground history and editor sessions have no
@@ -39,10 +42,11 @@ published catalog, so its changes require refreshing that catalog.
 ## Verification
 
 `TestScriptStories` executes the app fixtures, including the formerly skipped
-`host-script-viewer` and `host-foreground` stories. `TestMountedResultStories`
-replays those same fixtures across a real executable boundary with mounted
-catalog verbs and the shared proxy. The lane's separate PTY smoke exercises
-mtm's actual `v`, Enter, `H`, and `e` paths and records terminal handoff frames.
+`host-script-viewer` and `host-foreground` stories, plus `host-stdin-file`.
+`TestMountedResultStories` replays those fixtures across a real executable
+boundary with mounted catalog verbs, required-path forms and the shared proxy.
+The PTY smoke exercises mtm's `v`, Enter, `H`, `e`, `g i`, `g r`, and `g e`
+paths and records terminal handoff frames.
 
 Reuse: ochazuke's existing text viewer and foreground delivery, o-cmds'
 `prepareRun` recorder/capped streams, history chooser/`runText`, and the

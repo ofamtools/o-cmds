@@ -259,6 +259,11 @@ viewers. Standalone Enter keeps its streaming terminal handoff through
 `cmd.run`; that verb, `cmd.edit` and `cmd.edit-stdin` publish `foreground: true`
 for hosts. `cmd.show` and `run.show` keep structured MCP/CLI answers, while
 `run.view` returns labelled text. See [Family integration](docs/INTEGRATION.md).
+Hosted `g i` uses `cmd.run-file` with a required stdin path, so the host opens
+its shared file chooser before showing the captured run. Standalone `g i`
+keeps its existing stdin chooser and streaming execution. `cmd.rerun` (`g r`)
+and `run.rerun` declare foreground execution, preserving original args, cwd
+and stdin while allowing interactive reruns.
 
 
 The script itself is an ordinary editable file. `edit` checkpoints it before

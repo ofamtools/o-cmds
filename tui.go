@@ -36,7 +36,9 @@ func mountPage(a *App) (*page, error) {
 	if err == nil {
 		// Standalone keeps streaming on Enter; catalog hosts use the
 		// captured text-result verb published before this local override.
-		a.r.Define("cmd").Mode("normal").Bind("enter", ochazuke.Do("cmd.run"))
+		a.r.Define("cmd").Mode("normal").
+			Bind("enter", ochazuke.Do("cmd.run")).
+			Bind("g i", ochazuke.Do("cmd.stdin-file").Guard("stdin-ui"))
 	}
 	return p, err
 }

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"ofam.dev/ochazuke"
 	ocli "ofam.dev/ochazuke/cli"
 	"ofam.dev/oden"
 )
@@ -168,6 +169,20 @@ func TestCatalogAndStandalonePage(t *testing.T) {
 	if doc.Name != "o-cmds" || len(doc.Pages) != 1 || doc.Pages[0].Lists[0].Source != "cmd.list" {
 		t.Fatalf("catalog=%+v", doc.Pages)
 	}
+	keys := map[string]string{}
+	for _, row := range doc.Bindings {
+		if row.Noun == "cmd" && row.Mode == "normal" {
+			keys[row.Keys] = row.Request.Key()
+		}
+	}
+	for key, want := range map[string]string{
+		"enter": "cmd.run-view", "v": "cmd.view", "H": "cmd.history",
+		"y": "cmd.copy", "e": "cmd.edit", "d d": "cmd.delete",
+	} {
+		if got := keys[key]; got != want {
+			t.Errorf("published binding %s = %s, want %s", key, got, want)
+		}
+	}
 	var buf bytes.Buffer
 	a, e := newApp(s, strings.NewReader(""), &buf, &buf)
 	if e != nil {
@@ -180,6 +195,18 @@ func TestCatalogAndStandalonePage(t *testing.T) {
 	selected, ok := p.v.List(listID).Selected()
 	if !ok || selected.Data != "cmd/"+newest.ID {
 		t.Fatalf("selection=%+v", selected)
+	}
+	var foreground *exec.Cmd
+	p.m.Foreground = func(msg ochazuke.ForegroundMsg) tea.Cmd {
+		foreground = msg.Cmd
+		return func() tea.Msg { return msg.Done(nil) }
+	}
+	_, cmd := p.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if cmd != nil {
+		deliver(t, p, cmd())
+	}
+	if foreground == nil || len(foreground.Args) < 2 || foreground.Args[1] != newest.Path {
+		t.Fatalf("standalone Enter did not hand over the selected script: %v", foreground)
 	}
 }
 

@@ -55,7 +55,7 @@ func (a *App) runSpecs() []verbSpec {
 			a.refresh()
 			return result(nil, e)
 		})},
-		{name: "rerun", description: "Execute the current saved script with the run's args, cwd and stdin", params: target, positional: []string{"run"}, handler: a.onRun(a.rerun), cli: a.rerunCLI},
+		{name: "rerun", foreground: true, description: "Execute the current saved script with the run's args, cwd and stdin", params: target, positional: []string{"run"}, handler: a.onRun(a.rerun), cli: a.rerunCLI},
 	}
 }
 

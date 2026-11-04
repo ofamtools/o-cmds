@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
 	"ofam.dev/ochazuke"
 	ocli "ofam.dev/ochazuke/cli"
 )
@@ -22,10 +23,11 @@ func TestMountedResultStories(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
-	for _, name := range []string{"host-script-viewer", "host-foreground"} {
+	for _, name := range []string{"host-script-viewer", "host-foreground", "host-stdin-file"} {
 		t.Run(name, func(t *testing.T) {
 			var story struct {
 				Commands []Add
+				Inputs   map[string]string
 				Script   []string
 				Expect   []struct {
 					After    int
@@ -45,6 +47,21 @@ func TestMountedResultStories(t *testing.T) {
 				if _, err := s.Add(c); err != nil {
 					t.Fatal(err)
 				}
+			}
+			if len(story.Inputs) > 0 {
+				dir := filepath.Join(s.Dir, "inputs")
+				if err := os.MkdirAll(dir, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				for name, text := range story.Inputs {
+					if filepath.Base(name) != name {
+						t.Fatal("invalid input fixture name")
+					}
+					if err := os.WriteFile(filepath.Join(dir, name), []byte(text), 0o600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				t.Chdir(dir)
 			}
 			var out bytes.Buffer
 			a, err := newApp(s, strings.NewReader(""), &out, &out)
@@ -120,8 +137,7 @@ func TestMountedResultStories(t *testing.T) {
 						t.Fatalf("after %d modal=%q", i+1, r.TopModal())
 					}
 					for _, text := range want.Contains {
-						in := r.Input(r.Focus)
-						if in == nil || !strings.Contains(string(in.Text), text) {
+						if !strings.Contains(ansi.Strip(m.View().Content), text) {
 							t.Fatalf("after %d missing %q: %s", i+1, text, m.View().Content)
 						}
 					}

@@ -145,7 +145,7 @@ func newApp(s *Store, in io.Reader, out, errOut io.Writer) (*App, error) {
 	// runtime's effective bindings, including owner overrides.
 	a.r.Define("cmd").Mode("normal").
 		Bind("enter", ochazuke.Do("cmd.run-view")).
-		Bind("g i", ochazuke.Do("cmd.stdin-file").Guard("stdin-ui")).
+		Bind("g i", ochazuke.Do("cmd.run-file").Guard("stdin-ui")).
 		Bind("g e", ochazuke.Do("cmd.edit-stdin").Guard("stdin-ui")).
 		Bind("g r", ochazuke.Do("cmd.rerun").Guard("history-ui")).
 		Bind("v", ochazuke.Do("cmd.view")).
@@ -197,12 +197,13 @@ func (a *App) specs() []verbSpec {
 	return []verbSpec{
 		{name: "view", description: "Read the command script in a text viewer", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.view), text: true},
 		{name: "run-view", description: "Run and read captured stdout, stderr and exit status", params: map[string]ochazuke.Parameter{"target": target, "args": {Type: "array"}, "stdin": {Type: "path", Path: ochazuke.PathFile}}, positional: []string{"target"}, handler: a.on(a.runView), text: true},
+		{name: "run-file", description: "Choose a stdin file and read the captured run", params: map[string]ochazuke.Parameter{"target": target, "stdin": {Type: "path", Path: ochazuke.PathFile, Required: true, Description: "File to use as stdin"}}, positional: []string{"target", "stdin"}, handler: a.on(a.runView), text: true},
 		{name: "history", description: "Open full-screen command history on the terminal", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.history), foreground: true, cli: a.historyCLI},
 		{name: "stdin-file", description: "Choose a file to run with as stdin", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.stdinFile)},
 		{name: "edit-stdin", foreground: true, description: "Edit an empty buffer and run with it as stdin", params: map[string]ochazuke.Parameter{"target": target, "args": {Type: "array"}}, positional: []string{"target"}, handler: a.on(a.editStdin), cli: func(ctx context.Context, args []string) error {
 			return a.runCLI(ctx, append([]string{"--edit-stdin"}, args...))
 		}},
-		{name: "rerun", description: "Repeat the latest run with its original args, cwd and stdin", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.rerunLast), cli: a.rerunLastCLI},
+		{name: "rerun", foreground: true, description: "Repeat the latest run with its original args, cwd and stdin", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.rerunLast), cli: a.rerunLastCLI},
 		{name: "runs", description: "List a command's run history, newest at the bottom", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.commandRuns), output: "run-table"},
 		{name: "runs-clear", description: "Remove a command's captured run history", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.clearRuns)},
 		{name: "add", description: "Record a shell script, including an empty or unassociated one", params: map[string]ochazuke.Parameter{"name": param("Name; duplicates receive a suffix"), "desc": param("Description"), "file": param("Read script from file; otherwise script or stdin"), "script": param("Script text"), "cwd": param("Working directory; absence is allowed"), "tags": {Type: "array", Description: "Tags"}, "author": param("Author name; defaults to agent environment or owner")}, handler: a.add},

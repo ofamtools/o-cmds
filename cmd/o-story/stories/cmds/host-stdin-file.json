@@ -1,0 +1,13 @@
+{
+  "name": "hosted stdin file action chooses a path and presents the captured run",
+  "area": "cmds",
+  "host": true,
+  "commands": [{"name": "consume-stdin", "script": "cat"}],
+  "inputs": {"stdin.txt": "stdin fixture text\n"},
+  "script": ["g", "i", "s", "t", "d", "i", "n", ".", "t", "x", "t", "enter", "q"],
+  "expect": [
+    {"after": 2, "modal": true},
+    {"after": 12, "modal": true, "contains": ["stdin fixture text", "exit 0"], "runCount": 1, "runKind": "file", "runInput": "stdin fixture text\n"},
+    {"after": 13, "modal": false, "selected": "consume-stdin"}
+  ]
+}
