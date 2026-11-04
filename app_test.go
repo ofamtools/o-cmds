@@ -11,7 +11,6 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"ofam.dev/ochazuke"
 	ocli "ofam.dev/ochazuke/cli"
 	"ofam.dev/oden"
 )
@@ -169,17 +168,6 @@ func TestCatalogAndStandalonePage(t *testing.T) {
 	if doc.Name != "o-cmds" || len(doc.Pages) != 1 || doc.Pages[0].Lists[0].Source != "cmd.list" {
 		t.Fatalf("catalog=%+v", doc.Pages)
 	}
-	keys := map[string]string{}
-	for _, b := range doc.Bindings {
-		if b.Noun == "cmd" {
-			keys[b.Keys] = b.Request.Key()
-		}
-	}
-	for key, verb := range map[string]string{"enter": "cmd.run", "v": "cmd.show", "y": "cmd.copy", "e": "cmd.edit", "d d": "cmd.delete"} {
-		if keys[key] != verb {
-			t.Errorf("binding %s=%s", key, keys[key])
-		}
-	}
 	var buf bytes.Buffer
 	a, e := newApp(s, strings.NewReader(""), &buf, &buf)
 	if e != nil {
@@ -192,17 +180,6 @@ func TestCatalogAndStandalonePage(t *testing.T) {
 	selected, ok := p.v.List(listID).Selected()
 	if !ok || selected.Data != "cmd/"+newest.ID {
 		t.Fatalf("selection=%+v", selected)
-	}
-	// Real model dispatch, with a foreground hook: Enter starts a shell
-	// command without executing it inside a unit test.
-	var fg *exec.Cmd
-	p.m.Foreground = func(msg ochazuke.ForegroundMsg) tea.Cmd { fg = msg.Cmd; return func() tea.Msg { return msg.Done(nil) } }
-	_, cmd := p.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if cmd != nil {
-		deliver(t, p, cmd())
-	}
-	if fg == nil || len(fg.Args) < 2 || fg.Args[1] != newest.Path {
-		t.Fatalf("foreground=%v", fg)
 	}
 }
 

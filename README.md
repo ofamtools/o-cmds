@@ -251,6 +251,16 @@ the focused command's history, with the framework chooser's binding-derived
 hints and output preview. Its normal search and movement bindings apply;
 Enter opens the selected run in the scrollable viewer, and Escape closes it.
 
+In mtm, `H` runs `cmd.history` as a foreground full-screen session and closing
+it returns to the host. `v` uses `cmd.view` (declared text), and Enter uses
+`cmd.run-view` to open captured stdout, stderr and exit status in the host's
+read-only viewer. `keys.text-results=false` disables automatic key-result
+viewers. Standalone Enter keeps its streaming terminal handoff through
+`cmd.run`; that verb, `cmd.edit` and `cmd.edit-stdin` publish `foreground: true`
+for hosts. `cmd.show` and `run.show` keep structured MCP/CLI answers, while
+`run.view` returns labelled text. See [Family integration](docs/INTEGRATION.md).
+
+
 The script itself is an ordinary editable file. `edit` checkpoints it before
 opening `$VISUAL`, else `$EDITOR` (default `vi`); the selected editor controls
 its own writing.

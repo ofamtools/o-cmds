@@ -32,7 +32,13 @@ func (p *page) tick() tea.Cmd {
 }
 
 func mountPage(a *App) (*page, error) {
-	return mountPageAs(a, func(ocli.CatalogDoc) ocli.CatalogPage { return standalonePage(a.r) }, ocli.PageConfig{DetailKinds: map[string]ocli.DetailFactory{scriptDetailKind: newScriptDetail}})
+	p, err := mountPageAs(a, func(ocli.CatalogDoc) ocli.CatalogPage { return standalonePage(a.r) }, ocli.PageConfig{DetailKinds: map[string]ocli.DetailFactory{scriptDetailKind: newScriptDetail}})
+	if err == nil {
+		// Standalone keeps streaming on Enter; catalog hosts use the
+		// captured text-result verb published before this local override.
+		a.r.Define("cmd").Mode("normal").Bind("enter", ochazuke.Do("cmd.run"))
+	}
+	return p, err
 }
 
 // mountPageAs mounts the commands page from the published catalog with the

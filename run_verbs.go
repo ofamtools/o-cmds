@@ -46,6 +46,7 @@ func (a *App) runSpecs() []verbSpec {
 	return []verbSpec{
 		{name: "list", description: "List runs, newest at the bottom; optionally filter by command", params: map[string]ochazuke.Parameter{"command": param("Command name, number or ID")}, positional: []string{"command"}, handler: a.listRuns, output: "run-table"},
 		{name: "show", description: "Show run metadata and labelled stdin/stdout/stderr", params: target, positional: []string{"run"}, handler: a.onRun(a.showRun), output: "run-show"},
+		{name: "view", description: "Read labelled run output in a text viewer", params: target, positional: []string{"run"}, handler: a.onRun(func(_ ochazuke.Ctx, r RunOutput) ochazuke.Result { return ochazuke.Done(runText(r)) }), text: true},
 		{name: "out", description: "Print captured stdout bytes", params: target, positional: []string{"run"}, handler: a.onRun(func(_ ochazuke.Ctx, r RunOutput) ochazuke.Result { return ochazuke.Done(r) }), output: "run-out"},
 		{name: "in", description: "Print retained stdin bytes (may be truncated)", params: target, positional: []string{"run"}, handler: a.onRun(func(_ ochazuke.Ctx, r RunOutput) ochazuke.Result { return ochazuke.Done(r) }), output: "run-in"},
 		{name: "err", description: "Print captured stderr bytes", params: target, positional: []string{"run"}, handler: a.onRun(func(_ ochazuke.Ctx, r RunOutput) ochazuke.Result { return ochazuke.Done(r) }), output: "run-err"},

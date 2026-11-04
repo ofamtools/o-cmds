@@ -18,6 +18,10 @@
   as one undo step; the new-row tone and Runs/Last cells.
 * `run_verbs.go`: run noun, command history relations, history chooser and
   output viewer, CLI stream/table adapters and rerun with original args/cwd.
+* `mounted_results.go`: text script/run verbs, captured execution through the
+  shared recorder, and the foreground history session.
+* `mounted_results_test.go`: host acceptance stories across a real process
+  boundary using ochazuke's catalog proxy.
 * `tui.go`: mounts the catalog page, initial newest selection, refresh timer.
 * `detail_md.go`: catalog detail sections for hosts, fenced script Markdown
   with shebang/extension language and outfenced backticks.
@@ -32,5 +36,4 @@
 * `script_stories_test.go`: executes app story fixtures against the mounted
   page and effective bindings, with optional rendered-frame artifacts.
 * `host_mount_test.go`: mounts the published page as an external host does.
-* `cmd/o-story/stories/cmds`: executable script, run and host UI stories, and
-  skipped host integration gaps.
+* `cmd/o-story/stories/cmds`: executable script, run and host UI stories.
