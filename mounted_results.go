@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
+	"syscall"
 
 	tea "charm.land/bubbletea/v2"
 	"ofam.dev/ochazuke"
@@ -44,6 +46,8 @@ func (a *App) runView(c ochazuke.Ctx, row Command) ochazuke.Result {
 		return ochazuke.Failed(err)
 	}
 	return ochazuke.Pending(func(ctx context.Context) (any, error) {
+		ctx, stopSignal := signal.NotifyContext(ctx, syscall.SIGTERM)
+		defer stopSignal()
 		defer in.close()
 		stop := context.AfterFunc(ctx, cancel)
 		defer stop()
@@ -59,7 +63,8 @@ func (a *App) runView(c ochazuke.Ctx, row Command) ochazuke.Result {
 		if cmd.ProcessState != nil {
 			code = cmd.ProcessState.ExitCode()
 		}
-		return fmt.Sprintf("%s · exit %d\n\n--- stdout ---\n%s\n--- stderr ---\n%s", row.Name, code, out.String(), errOut.String()), nil
+		title := fmt.Sprintf("%s · exit %d", row.Name, code)
+		return ochazuke.TextAnswer{Title: title, Text: fmt.Sprintf("%s\n\n--- stdout ---\n%s\n--- stderr ---\n%s", title, out.String(), errOut.String())}, nil
 	}).Then(func(ochazuke.Ctx, any, error) { a.refresh() })
 }
 
@@ -89,6 +94,12 @@ func (a *App) historyCLI(_ context.Context, words []string) error {
 	p, err := mountPage(a)
 	if err != nil {
 		return err
+	}
+	for _, item := range p.v.List(listID).Items() {
+		if item.Data == "cmd/"+row.ID {
+			_ = a.r.SetFocus(item.ID)
+			break
+		}
 	}
 	// The chooser and its previews are the existing history UI. Its last
 	// modal closing ends this foreground session and restores the host.

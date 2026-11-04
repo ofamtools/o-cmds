@@ -1,0 +1,36 @@
+{
+  "name": "cmds/host-enter-twice-one-run",
+  "area": "cmds",
+  "host": true,
+  "commands": [
+    {
+      "name": "one-run",
+      "script": "printf \"one result\\n\"\n"
+    }
+  ],
+  "script": [
+    "enter",
+    "enter"
+  ],
+  "noWait": [
+    1
+  ],
+  "runCount": 1,
+  "expect": [
+    {
+      "after": 1,
+      "modal": false,
+      "contains": [
+        "running"
+      ]
+    },
+    {
+      "after": 2,
+      "modal": true,
+      "contains": [
+        "one-run \u00b7 exit 0",
+        "one result"
+      ]
+    }
+  ]
+}

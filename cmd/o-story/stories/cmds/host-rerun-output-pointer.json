@@ -1,0 +1,9 @@
+{
+  "name": "cmds/host-rerun-output-pointer",
+  "area": "cmds",
+  "host": true,
+  "commands": [{"name": "failed-rerun", "script": "echo readable-output; echo retained-reason >&2; exit 5\n"}],
+  "script": ["enter", "esc", "g", "r"],
+  "runCount": 2,
+  "expect": [{"after": 1, "modal": true, "contains": ["failed-rerun · exit 5"]}, {"after": 4, "modal": false, "error": "retained-reason (exit 5)", "contains": ["retained-reason (exit 5)"]}]
+}

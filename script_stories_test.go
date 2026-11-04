@@ -32,16 +32,15 @@ func TestScriptStories(t *testing.T) {
 		t.Fatal(e)
 	}
 	files = append(files, runFiles...)
-	hostFiles, e := filepath.Glob("cmd/o-story/stories/cmds/host-*.json")
+	historyFiles, e := filepath.Glob("cmd/o-story/stories/cmds/history-*.json")
 	if e != nil {
 		t.Fatal(e)
 	}
-	files = append(files, hostFiles...)
+	files = append(files, historyFiles...)
 	for _, file := range files {
 		t.Run(filepath.Base(file), func(t *testing.T) {
 			var story struct {
 				Name       string
-				Host       bool
 				Commands   []Add
 				Picker     bool
 				Foreground bool
@@ -140,8 +139,6 @@ func TestScriptStories(t *testing.T) {
 				if e == nil {
 					p = pick.page
 				}
-			} else if story.Host {
-				p, e = mountHostPage(a)
 			} else {
 				p, e = mountPage(a)
 			}

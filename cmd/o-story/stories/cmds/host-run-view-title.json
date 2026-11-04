@@ -1,0 +1,8 @@
+{
+  "name": "cmds/host-run-view-title",
+  "area": "cmds",
+  "host": true,
+  "commands": [{"name": "named-result", "script": "printf 'result body\\n'; exit 3\n"}],
+  "script": ["enter", "esc"],
+  "expect": [{"after": 1, "modal": true, "contains": ["named-result · exit 3", "result body"]}, {"after": 2, "modal": false, "selected": "named-result"}]
+}

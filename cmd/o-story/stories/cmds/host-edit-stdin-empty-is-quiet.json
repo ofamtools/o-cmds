@@ -1,0 +1,26 @@
+{
+  "name": "cmds/host-edit-stdin-empty-is-quiet",
+  "area": "cmds",
+  "host": true,
+  "commands": [
+    {
+      "name": "empty-input",
+      "script": "echo must-not-run\n"
+    }
+  ],
+  "editor": "/usr/bin/true",
+  "script": [
+    "g",
+    "e"
+  ],
+  "runCount": 0,
+  "expect": [
+    {
+      "after": 2,
+      "modal": false,
+      "contains": [
+        "stdin cancelled: editor buffer is empty"
+      ]
+    }
+  ]
+}

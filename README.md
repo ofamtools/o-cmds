@@ -249,7 +249,9 @@ the history modal without disabling recording or CLI access.
 The command preview shows the latest run's status, time and duration. `H` opens
 the focused command's history, with the framework chooser's binding-derived
 hints and output preview. Its normal search and movement bindings apply;
-Enter opens the selected run in the scrollable viewer, and Escape closes it.
+Enter opens the selected run in the scrollable viewer. Escape returns to the
+run list, then another Escape returns to the host. `history.keep-open=false`
+restores closing the list when a run opens. The backdrop selects that command.
 
 In mtm, `H` runs `cmd.history` as a foreground full-screen session and closing
 it returns to the host. `v` uses `cmd.view` (declared text), and Enter uses
@@ -264,6 +266,20 @@ its shared file chooser before showing the captured run. Standalone `g i`
 keeps its existing stdin chooser and streaming execution. `cmd.rerun` (`g r`)
 and `run.rerun` declare foreground execution, preserving original args, cwd
 and stdin while allowing interactive reruns.
+
+`cmd.run-view` and `cmd.run-file` publish a shared per-row `run` slot and a
+15-minute captured limit. Pressing Enter twice while a run is active starts
+only one run. The host can cancel it through `jobs.cancel`; a limit or
+cancellation stops the process group and lets the recorder close its record.
+The captured answer returns `{"title":"NAME · exit N","text":"…"}`.
+The host uses that title unless `text-view.result-title=false`.
+
+Foreground failures retain the last stderr line and, by default, wait for a
+key before resuming. The host's `foreground.hold=off` disables that wait.
+Leaving an edited stdin buffer empty is a plain cancellation and runs no
+script. `view.runs=false` and `view.stdin=false` publish disabled catalog verbs
+for their corresponding UI actions. Refresh the host catalog after changing
+these settings.
 
 
 The script itself is an ordinary editable file. `edit` checkpoints it before

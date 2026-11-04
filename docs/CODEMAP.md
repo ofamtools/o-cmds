@@ -18,10 +18,10 @@
   as one undo step; the new-row tone and Runs/Last cells.
 * `run_verbs.go`: run noun, command history relations, history chooser and
   output viewer, CLI stream/table adapters and rerun with original args/cwd.
-* `mounted_results.go`: text script/run verbs, captured execution through the
-  shared recorder, and the foreground history session.
-* `mounted_results_test.go`: host acceptance stories across a real process
-  boundary using ochazuke's catalog proxy.
+* `mounted_results.go`: titled text script/run verbs, cancellable captured
+  execution through the shared recorder, and selected-row foreground history.
+* `mounted_results_test.go`: host acceptance stories across real captured and
+  foreground processes, including deadlines, closed records and duplicate keys.
 * `tui.go`: mounts the catalog page, initial newest selection, refresh timer.
 * `detail_md.go`: catalog detail sections for hosts, fenced script Markdown
   with shebang/extension language and outfenced backticks.

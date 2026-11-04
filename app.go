@@ -45,6 +45,9 @@ type verbSpec struct {
 	confirm, agent    string
 	output            string
 	text, foreground  bool
+	slot              string
+	timeout           time.Duration
+	enabled           string
 	cli               func(context.Context, []string) error
 }
 
@@ -98,6 +101,7 @@ func newApp(s *Store, in io.Reader, out, errOut io.Writer) (*App, error) {
 		ochazuke.Setting{Name: "runs.max-bytes", Type: ochazuke.SettingInteger, Default: 1024 * 1024, Description: "Bytes retained per stdout/stderr/stdin stream", Validate: nonnegative},
 		ochazuke.Setting{Name: "view.stdin", Type: ochazuke.SettingBoolean, Default: true, Description: "Enable TUI stdin file picker and editor actions"},
 		ochazuke.Setting{Name: "view.runs", Type: ochazuke.SettingBoolean, Default: true, Description: "Show last-run status and enable the TUI history view"},
+		ochazuke.Setting{Name: "history.keep-open", Type: ochazuke.SettingBoolean, Default: true, Description: "Return from a run viewer to its history chooser; off closes history when a run is picked"},
 		ochazuke.Setting{Name: "list.order", Type: ochazuke.SettingString, Default: "oldest-first", Enum: []string{"oldest-first", "newest-first"}, Description: "Command order, including numbered CLI targets"},
 		ochazuke.Setting{Name: "list.start-newest", Type: ochazuke.SettingBoolean, Default: true, Description: "Start the standalone page on the newest command"},
 		ochazuke.Setting{Name: "view.detail", Type: ochazuke.SettingBoolean, Default: true, Description: "Show the script and metadata beside the command list"},
@@ -133,6 +137,8 @@ func newApp(s *Store, in io.Reader, out, errOut io.Writer) (*App, error) {
 		}
 		op := a.r.Operations[spec.noun+"."+spec.name]
 		op.Parameters = spec.params
+		op.Slot, op.Timeout = spec.slot, spec.timeout
+		op.EnabledSetting = spec.enabled
 		a.r.Operations[op.Key()] = op
 	}
 	a.r.SetRecentPaths(a.recentInputs)
@@ -196,14 +202,14 @@ func (a *App) specs() []verbSpec {
 	target := param("Command name, displayed number or stable ID (defaults to selected row)")
 	return []verbSpec{
 		{name: "view", description: "Read the command script in a text viewer", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.view), text: true},
-		{name: "run-view", description: "Run and read captured stdout, stderr and exit status", params: map[string]ochazuke.Parameter{"target": target, "args": {Type: "array"}, "stdin": {Type: "path", Path: ochazuke.PathFile}}, positional: []string{"target"}, handler: a.on(a.runView), text: true},
-		{name: "run-file", description: "Choose a stdin file and read the captured run", params: map[string]ochazuke.Parameter{"target": target, "stdin": {Type: "path", Path: ochazuke.PathFile, Required: true, Description: "File to use as stdin"}}, positional: []string{"target", "stdin"}, handler: a.on(a.runView), text: true},
-		{name: "history", description: "Open full-screen command history on the terminal", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.history), foreground: true, cli: a.historyCLI},
-		{name: "stdin-file", description: "Choose a file to run with as stdin", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.stdinFile)},
-		{name: "edit-stdin", foreground: true, description: "Edit an empty buffer and run with it as stdin", params: map[string]ochazuke.Parameter{"target": target, "args": {Type: "array"}}, positional: []string{"target"}, handler: a.on(a.editStdin), cli: func(ctx context.Context, args []string) error {
+		{name: "run-view", description: "Run and read captured stdout, stderr and exit status", params: map[string]ochazuke.Parameter{"target": target, "args": {Type: "array"}, "stdin": {Type: "path", Path: ochazuke.PathFile}}, positional: []string{"target"}, handler: a.on(a.runView), text: true, slot: "run", timeout: 15 * time.Minute},
+		{name: "run-file", description: "Choose a stdin file and read the captured run", params: map[string]ochazuke.Parameter{"target": target, "stdin": {Type: "path", Path: ochazuke.PathFile, Required: true, Description: "File to use as stdin"}}, positional: []string{"target", "stdin"}, handler: a.on(a.runView), text: true, slot: "run", timeout: 15 * time.Minute, enabled: "view.stdin"},
+		{name: "history", description: "Open full-screen command history on the terminal", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.history), foreground: true, cli: a.historyCLI, enabled: "view.runs"},
+		{name: "stdin-file", description: "Choose a file to run with as stdin", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.stdinFile), enabled: "view.stdin"},
+		{name: "edit-stdin", foreground: true, description: "Edit an empty buffer and run with it as stdin", params: map[string]ochazuke.Parameter{"target": target, "args": {Type: "array"}}, positional: []string{"target"}, handler: a.on(a.editStdin), enabled: "view.stdin", cli: func(ctx context.Context, args []string) error {
 			return a.runCLI(ctx, append([]string{"--edit-stdin"}, args...))
 		}},
-		{name: "rerun", foreground: true, description: "Repeat the latest run with its original args, cwd and stdin", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.rerunLast), cli: a.rerunLastCLI},
+		{name: "rerun", foreground: true, description: "Repeat the latest run with its original args, cwd and stdin", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.rerunLast), cli: a.rerunLastCLI, enabled: "view.runs"},
 		{name: "runs", description: "List a command's run history, newest at the bottom", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.commandRuns), output: "run-table"},
 		{name: "runs-clear", description: "Remove a command's captured run history", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.clearRuns)},
 		{name: "add", description: "Record a shell script, including an empty or unassociated one", params: map[string]ochazuke.Parameter{"name": param("Name; duplicates receive a suffix"), "desc": param("Description"), "file": param("Read script from file; otherwise script or stdin"), "script": param("Script text"), "cwd": param("Working directory; absence is allowed"), "tags": {Type: "array", Description: "Tags"}, "author": param("Author name; defaults to agent environment or owner")}, handler: a.add},

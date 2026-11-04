@@ -153,6 +153,8 @@ func (a *App) newInputBuffer() (string, error) {
 	return path, nil
 }
 
+var errEmptyInput = errors.New("stdin cancelled: editor buffer is empty")
+
 func editedContent(path string, editorErr error) error {
 	if editorErr != nil {
 		return fmt.Errorf("stdin cancelled: editor failed: %w", editorErr)
@@ -162,7 +164,7 @@ func editedContent(path string, editorErr error) error {
 		return fmt.Errorf("stdin cancelled: %w", err)
 	}
 	if info.Size() == 0 {
-		return errors.New("stdin cancelled: editor buffer is empty")
+		return errEmptyInput
 	}
 	return nil
 }
