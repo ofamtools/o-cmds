@@ -170,14 +170,17 @@ func TestCatalogAndStandalonePage(t *testing.T) {
 		t.Fatalf("catalog=%+v", doc.Pages)
 	}
 	keys := map[string]string{}
-	for _, b := range doc.Bindings {
-		if b.Noun == "cmd" {
-			keys[b.Keys] = b.Request.Key()
+	for _, row := range doc.Bindings {
+		if row.Noun == "cmd" && row.Mode == "normal" {
+			keys[row.Keys] = row.Request.Key()
 		}
 	}
-	for key, verb := range map[string]string{"enter": "cmd.run", "v": "cmd.show", "y": "cmd.copy", "e": "cmd.edit", "d d": "cmd.delete"} {
-		if keys[key] != verb {
-			t.Errorf("binding %s=%s", key, keys[key])
+	for key, want := range map[string]string{
+		"enter": "cmd.run-view", "v": "cmd.view", "H": "cmd.history",
+		"y": "cmd.copy", "e": "cmd.edit", "d d": "cmd.delete",
+	} {
+		if got := keys[key]; got != want {
+			t.Errorf("published binding %s = %s, want %s", key, got, want)
 		}
 	}
 	var buf bytes.Buffer
@@ -193,16 +196,17 @@ func TestCatalogAndStandalonePage(t *testing.T) {
 	if !ok || selected.Data != "cmd/"+newest.ID {
 		t.Fatalf("selection=%+v", selected)
 	}
-	// Real model dispatch, with a foreground hook: Enter starts a shell
-	// command without executing it inside a unit test.
-	var fg *exec.Cmd
-	p.m.Foreground = func(msg ochazuke.ForegroundMsg) tea.Cmd { fg = msg.Cmd; return func() tea.Msg { return msg.Done(nil) } }
+	var foreground *exec.Cmd
+	p.m.Foreground = func(msg ochazuke.ForegroundMsg) tea.Cmd {
+		foreground = msg.Cmd
+		return func() tea.Msg { return msg.Done(nil) }
+	}
 	_, cmd := p.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd != nil {
 		deliver(t, p, cmd())
 	}
-	if fg == nil || len(fg.Args) < 2 || fg.Args[1] != newest.Path {
-		t.Fatalf("foreground=%v", fg)
+	if foreground == nil || len(foreground.Args) < 2 || foreground.Args[1] != newest.Path {
+		t.Fatalf("standalone Enter did not hand over the selected script: %v", foreground)
 	}
 }
 

@@ -1,0 +1,7 @@
+{
+  "name": "host-failed-script-reason-visible",
+  "host": true,
+  "commands": [{"name":"b-fail-cd", "script":"cd /tmp/a-very-long-missing-directory/another-long-component/another-long-component/no-such-location\n"}],
+  "script": ["enter", "esc"],
+  "expect": [{"after":1,"modal":true,"contains":["b-fail-cd · exit 1","No such file or directory"]},{"after":2,"modal":false}]
+}

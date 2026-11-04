@@ -1,0 +1,26 @@
+{
+  "name": "cmds/host-rerun-no-runs-says-why",
+  "area": "cmds",
+  "host": true,
+  "commands": [
+    {
+      "name": "never-run",
+      "script": "echo must-not-run\n"
+    }
+  ],
+  "script": [
+    "g",
+    "r"
+  ],
+  "runCount": 0,
+  "expect": [
+    {
+      "after": 2,
+      "modal": false,
+      "error": "command has no recorded runs",
+      "contains": [
+        "command has no recorded runs"
+      ]
+    }
+  ]
+}

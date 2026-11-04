@@ -1,7 +1,9 @@
 {
   "name": "mounted command runs and editors can request a terminal or pane",
   "area": "cmds",
-  "skip": "gap: mtm and nabe extension proxies capture stdout and expose no terminal or pane execution capability. Needs a general catalog-host contract.",
-  "page": {"lists": [{"id": "commands", "rows": 1}]},
-  "script": ["enter"]
+  "host": true,
+  "foreground": true,
+  "commands": [{"name": "host-run", "script": "printf 'mounted-output-proof\\n'\n"}],
+  "script": ["enter", "q"],
+  "expect": [{"after": 1, "modal": true, "contains": ["mounted-output-proof", "--- stderr ---"], "runCount": 1}, {"after": 2, "modal": false, "selected": "host-run"}]
 }

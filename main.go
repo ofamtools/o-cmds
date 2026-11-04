@@ -258,6 +258,10 @@ func (a *App) runEdited(ctx context.Context, row Command, argv []string) error {
 	editor := editorCommand(ctx, path)
 	editor.Stdin, editor.Stdout, editor.Stderr = a.in, a.out, a.errOut
 	if err := editedContent(path, a.run(editor)); err != nil {
+		if errors.Is(err, errEmptyInput) {
+			_, _ = fmt.Fprintln(a.errOut, err)
+			return nil
+		}
 		return err
 	}
 	input, err := a.openInput(path, "edited")

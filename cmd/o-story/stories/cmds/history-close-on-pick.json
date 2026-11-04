@@ -1,0 +1,8 @@
+{
+  "name": "history keep-open opt-out closes the chooser on a pick",
+  "commands": [{"name": "one-history", "script": "echo retained\n"}],
+  "settings": {"history.keep-open": false},
+  "runs": [{"command": "one-history", "stdout": "retained output", "stderr": "", "exitCode": 0}],
+  "script": ["H", "enter", "esc"],
+  "expect": [{"after": 2, "modal": true, "contains": ["Run: one-history", "retained output"]}, {"after": 3, "modal": false, "selected": "one-history"}]
+}

@@ -46,6 +46,7 @@ func (a *App) runSpecs() []verbSpec {
 	return []verbSpec{
 		{name: "list", description: "List runs, newest at the bottom; optionally filter by command", params: map[string]ochazuke.Parameter{"command": param("Command name, number or ID")}, positional: []string{"command"}, handler: a.listRuns, output: "run-table"},
 		{name: "show", description: "Show run metadata and labelled stdin/stdout/stderr", params: target, positional: []string{"run"}, handler: a.onRun(a.showRun), output: "run-show"},
+		{name: "view", description: "Read labelled run output in a text viewer", params: target, positional: []string{"run"}, handler: a.onRun(func(_ ochazuke.Ctx, r RunOutput) ochazuke.Result { return ochazuke.Done(runText(r)) }), text: true},
 		{name: "out", description: "Print captured stdout bytes", params: target, positional: []string{"run"}, handler: a.onRun(func(_ ochazuke.Ctx, r RunOutput) ochazuke.Result { return ochazuke.Done(r) }), output: "run-out"},
 		{name: "in", description: "Print retained stdin bytes (may be truncated)", params: target, positional: []string{"run"}, handler: a.onRun(func(_ ochazuke.Ctx, r RunOutput) ochazuke.Result { return ochazuke.Done(r) }), output: "run-in"},
 		{name: "err", description: "Print captured stderr bytes", params: target, positional: []string{"run"}, handler: a.onRun(func(_ ochazuke.Ctx, r RunOutput) ochazuke.Result { return ochazuke.Done(r) }), output: "run-err"},
@@ -54,7 +55,7 @@ func (a *App) runSpecs() []verbSpec {
 			a.refresh()
 			return result(nil, e)
 		})},
-		{name: "rerun", description: "Execute the current saved script with the run's args, cwd and stdin", params: target, positional: []string{"run"}, handler: a.onRun(a.rerun), cli: a.rerunCLI},
+		{name: "rerun", foreground: true, description: "Execute the current saved script with the run's args, cwd and stdin", params: target, positional: []string{"run"}, handler: a.onRun(a.rerun), cli: a.rerunCLI},
 	}
 }
 
@@ -122,7 +123,7 @@ func (a *App) commandRuns(_ ochazuke.Ctx, c Command) ochazuke.Result {
 			}
 			choices = append(choices, ochazuke.ChooserRow{ID: r.ID, Label: runSummary(r), Data: r.ID, Cells: []string{strconv.Itoa(row.Number), runSummary(r)}, Tones: []ochazuke.ToneSpan{{Cell: 1, Tone: tone}}})
 		}
-		_, e := a.r.OpenChooser(ochazuke.ChooserSpec{Kind: "run-history", Title: "Runs: " + c.Name, Rows: choices, Plural: "runs", Empty: "no recorded runs", Preview: func(row ochazuke.ChooserRow) string {
+		_, e := a.r.OpenChooser(ochazuke.ChooserSpec{Kind: "run-history", Stay: a.r.Settings().Bool("history.keep-open"), Title: "Runs: " + c.Name, Rows: choices, Plural: "runs", Empty: "no recorded runs", Preview: func(row ochazuke.ChooserRow) string {
 			r, e := a.store.ReadRun(row.ID)
 			if e != nil {
 				return e.Error()

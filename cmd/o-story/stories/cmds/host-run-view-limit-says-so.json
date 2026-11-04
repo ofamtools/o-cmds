@@ -1,0 +1,26 @@
+{
+  "name": "cmds/host-run-view-limit-says-so",
+  "area": "cmds",
+  "host": true,
+  "commands": [
+    {
+      "name": "limited",
+      "script": "sleep 30\n"
+    }
+  ],
+  "timeout": "2s",
+  "script": [
+    "enter"
+  ],
+  "runCount": 1,
+  "expect": [
+    {
+      "after": 1,
+      "modal": false,
+      "error": "stopped after 2s (limit)",
+      "contains": [
+        "stopped after 2s (limit)"
+      ]
+    }
+  ]
+}

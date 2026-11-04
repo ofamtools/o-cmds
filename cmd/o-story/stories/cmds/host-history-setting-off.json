@@ -1,0 +1,7 @@
+{
+ "name":"host-history-setting-off", "host":true,
+ "commands":[{"name":"disabled-history","script":"printf safe"}],
+ "settings":{"view.runs":false},
+ "script":["H","g","r"],
+ "expect":[{"after":1,"modal":false},{"after":3,"modal":false,"lacks":["host.cmd.history","host.cmd.rerun"]}]
+}

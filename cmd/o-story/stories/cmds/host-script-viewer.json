@@ -1,7 +1,8 @@
 {
   "name": "mounted commands open the full-screen script viewer inside the host UI",
   "area": "cmds",
-  "skip": "gap: captured CLI show output cannot open the app's script viewer modal in an external host. Needs a shared text viewer contract in ochazuke and hosts.",
-  "page": {"lists": [{"id": "commands", "rows": 1}]},
-  "script": ["v"]
+  "host": true,
+  "commands": [{"name": "host-view", "script": "printf 'mounted-script-proof\\n'\n"}],
+  "script": ["v", "q"],
+  "expect": [{"after": 1, "modal": true, "contains": ["mounted-script-proof"]}, {"after": 2, "modal": false, "selected": "host-view"}]
 }
