@@ -127,7 +127,11 @@ func TestStdinCancellationAndInvalidSources(t *testing.T) {
 			c := addCommand(t, s, "cancel", "cat")
 			t.Setenv("VISUAL", tc.editor)
 			_, err := invoke(t, s, "", "cmd", "run", c.Name, "--edit-stdin")
-			if err == nil || !strings.Contains(err.Error(), tc.want) {
+			if tc.name == "empty" {
+				if err != nil {
+					t.Fatalf("empty edit is a quiet cancel, got %v", err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("cancel %v", err)
 			}
 			rows, err := s.Runs("")
