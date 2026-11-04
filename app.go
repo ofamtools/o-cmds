@@ -175,6 +175,9 @@ func newApp(s *Store, in io.Reader, out, errOut io.Writer) (*App, error) {
 		Bind("ctrl+d", ochazuke.Do("ochazuke.detail.scroll", ochazuke.Arguments{"lines": 8}).Guard("detail-scrolls")).
 		Bind("ctrl+u", ochazuke.Do("ochazuke.detail.scroll", ochazuke.Arguments{"lines": -8}).Guard("detail-scrolls"))
 	registerScriptViewer(a.r)
+	if err := a.declareSetup(); err != nil {
+		return nil, err
+	}
 	if err := ocli.DeclarePage(a.r, commandPage(a.r.Settings().Bool("view.detail"))); err != nil {
 		return nil, err
 	}

@@ -96,6 +96,27 @@ the CLI returns the script's exit status. A missing recorded directory does
 not prevent saving; running reports the directory error. Script bytes are
 preserved, including when the script is empty or has no trailing newline.
 
+## Setup: the agents' note
+
+`o-cmds setup` adds a managed block to the agents' instruction files
+(`${CLAUDE_CONFIG_DIR:-~/.claude}/CLAUDE.md`, `~/.codex/AGENTS.md`) between
+`<!-- o-cmds:begin -->` and `<!-- o-cmds:end -->`. It tells agents to record
+commands they give you with `o-cmds cmd add` (or `cmds.cmd add` through the mtm
+MCP gateway), with self-contained scripts and no secrets or host details.
+
+```sh
+o cmds setup                  # status
+o cmds setup plan             # dry run
+o cmds setup install --yes
+o cmds setup uninstall --yes
+```
+
+Symlinked instruction files are followed (links stay intact), each target gets
+a `.o-cmds.bak` backup, and reinstall is idempotent. `setup.skip` lists item ids
+to leave out; its default skips an earlier identical block in the same resolved
+directory, so a `CLAUDE.md` importing `AGENTS.md` does not read the note twice.
+mtm's Extensions page shows `setup` for o-cmds through the shared catalog noun.
+
 ## Stdin from a file or editor
 
 ```sh

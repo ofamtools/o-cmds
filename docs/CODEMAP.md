@@ -5,6 +5,9 @@
   destruction metadata, transport-bound mutation identity, archive/restore flag
   handler, bindings, settings, catalog page and row formatting. Custom rows
   honour `list.hide-archived`; archived records use names/IDs, not live numbers.
+* `setup.go`, `setup.json`: agent instruction-note setup items (Claude and Codex
+  instruction files, own `o-cmds` markers) for ochazuke's shared `setup` verbs,
+  with co-located block skip defaults (`setup.skip`).
 * `store.go`: per-command files, author stamps, lock, duplicate suffixes,
   retained deletion, archive-aware resolution, actor-attributed undo snapshots
   and receipts (batched for selections; the run counter is never rolled back)
@@ -35,6 +38,8 @@
 * `mcp.go`: curated seven-tool JSON-RPC stdio server, registry-derived schemas;
   command add/list/show/dismiss/undismiss and read-only run list/show, never
   execution or reset.
+* `setup_test.go`: install/uninstall idempotence, symlink follow, shared files and
+  skip defaults, all under temp HOME.
 * `*_test.go`: isolated store, CLI, MCP and model-dispatch behavior checks.
 * `rights_archive_test.go`: agent archive/restore/reset round trips, retained
   scripts/streams, snapshot attribution, visibility/numbering opt-out, name

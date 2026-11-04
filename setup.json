@@ -1,0 +1,32 @@
+[
+  {
+    "id": "claude-md",
+    "name": "Claude Code instructions note",
+    "description": "Adds the 'Commands for the owner (o-cmds)' note to Claude Code's user instructions, between o-cmds markers; the rest of the file is untouched.",
+    "kind": "block",
+    "follow": true,
+    "path": "${CLAUDE_CONFIG_DIR:-~/.claude}/CLAUDE.md",
+    "begin": "<!-- o-cmds:begin -->",
+    "end": "<!-- o-cmds:end -->",
+    "content": "## Commands for the owner (o-cmds)\n\nWhen you give the owner a command or a multi-step recipe to run (build and play, open a page, run a check), also record it in o-cmds so they can list, view and run it later: `o-cmds cmd add --name <short-slug> --desc \"<what it does>\"` with the script on stdin, or through the mtm MCP gateway (`run` with `cmds.cmd add`). Make the script self-contained (cd and any temp env inside it), and never put secrets or machine-specific host details in it. Tell the owner the command's name; they run it with `o-cmds cmd run NAME|N` or from the `o-cmds` TUI (newest at the bottom).",
+    "requires": [
+      "dir:${CLAUDE_CONFIG_DIR:-~/.claude}"
+    ],
+    "group": "agents"
+  },
+  {
+    "id": "codex-agents",
+    "name": "Codex instructions note",
+    "description": "Adds the same note to Codex's user instructions. Both items share one marker pair, so when both paths are the same file the note appears once.",
+    "kind": "block",
+    "follow": true,
+    "path": "~/.codex/AGENTS.md",
+    "begin": "<!-- o-cmds:begin -->",
+    "end": "<!-- o-cmds:end -->",
+    "content": "## Commands for the owner (o-cmds)\n\nWhen you give the owner a command or a multi-step recipe to run (build and play, open a page, run a check), also record it in o-cmds so they can list, view and run it later: `o-cmds cmd add --name <short-slug> --desc \"<what it does>\"` with the script on stdin, or through the mtm MCP gateway (`run` with `cmds.cmd add`). Make the script self-contained (cd and any temp env inside it), and never put secrets or machine-specific host details in it. Tell the owner the command's name; they run it with `o-cmds cmd run NAME|N` or from the `o-cmds` TUI (newest at the bottom).",
+    "requires": [
+      "dir:~/.codex"
+    ],
+    "group": "agents"
+  }
+]
