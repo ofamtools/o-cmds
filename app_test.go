@@ -30,6 +30,28 @@ func invoke(t *testing.T, s *Store, input string, args ...string) (string, error
 	return out.String(), e
 }
 
+// rename without a name used to rename the command to "command"; the name is
+// required, so the verb refuses and nothing changes.
+func TestRenameRequiresAName(t *testing.T) {
+	s := fixture(t)
+	if _, e := invoke(t, s, "", "cmd", "add", "--name", "keep", "--script", "true"); e != nil {
+		t.Fatal(e)
+	}
+	a, e := newApp(s, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if !a.r.Operations["cmd.rename"].Parameters["name"].Required {
+		t.Fatal("cmd.rename name is optional")
+	}
+	if _, e = invoke(t, s, "", "cmd", "rename", "keep"); e == nil {
+		t.Fatal("rename with no name succeeded")
+	}
+	if out, e := invoke(t, s, "", "cmd", "show", "keep"); e != nil || out != "true" {
+		t.Fatalf("%q %v", out, e)
+	}
+}
+
 func TestCLIAddListShowRenameDeleteUndo(t *testing.T) {
 	s := fixture(t)
 	at := s.now()
