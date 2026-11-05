@@ -199,7 +199,7 @@ func (a *App) shell() *ocli.Shell {
 				return err
 			}
 		}
-		return list.SetItems([]ochazuke.ListItem{{ID: target, Noun: "cmd", Label: row.Name, Data: "cmd/" + row.ID}})
+		return list.SetItems([]ochazuke.ListItem{{ID: target, Noun: "cmd", Label: row.Name, Data: map[string]any{"id": row.ID}}})
 	}
 	return sh
 }
@@ -216,36 +216,42 @@ func required(desc string) ochazuke.Parameter {
 
 func (a *App) specs() []verbSpec {
 	target := param("Command name, displayed number or stable ID (defaults to selected row)")
+	// focused is the same parameter for a verb that acts on one command: from a
+	// key, the help or the palette it names the focused command row, and the
+	// args form says so. A verb that takes the marked rows (many) keeps target
+	// plain, since the marks are its source.
+	focused := target
+	focused.From = ochazuke.SourceRow + ":id"
 	return []verbSpec{
-		{name: "view", description: "Read the command script in a text viewer", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.view), text: true},
-		{name: "run-view", description: "Run and read captured stdout, stderr and exit status", params: map[string]ochazuke.Parameter{"target": target, "args": {Type: "array"}, "stdin": {Type: "path", Path: ochazuke.PathFile}}, positional: []string{"target"}, handler: a.on(a.runView), text: true, slot: "run", timeout: 15 * time.Minute},
-		{name: "run-file", description: "Choose a stdin file and read the captured run", params: map[string]ochazuke.Parameter{"target": target, "stdin": {Type: "path", Path: ochazuke.PathFile, Required: true, Description: "File to use as stdin"}}, positional: []string{"target", "stdin"}, handler: a.on(a.runView), text: true, slot: "run", timeout: 15 * time.Minute, enabled: "view.stdin"},
-		{name: "history", description: "Open full-screen command history on the terminal", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.history), foreground: true, cli: a.historyCLI, enabled: "view.runs"},
-		{name: "stdin-file", description: "Choose a file to run with as stdin", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.stdinFile), enabled: "view.stdin"},
-		{name: "edit-stdin", foreground: true, description: "Edit an empty buffer and run with it as stdin", params: map[string]ochazuke.Parameter{"target": target, "args": {Type: "array"}}, positional: []string{"target"}, handler: a.on(a.editStdin), enabled: "view.stdin", cli: func(ctx context.Context, args []string) error {
+		{name: "view", description: "Read the command script in a text viewer", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.view), text: true},
+		{name: "run-view", description: "Run and read captured stdout, stderr and exit status", params: map[string]ochazuke.Parameter{"target": focused, "args": {Type: "array"}, "stdin": {Type: "path", Path: ochazuke.PathFile}}, positional: []string{"target"}, handler: a.on(a.runView), text: true, slot: "run", timeout: 15 * time.Minute},
+		{name: "run-file", description: "Choose a stdin file and read the captured run", params: map[string]ochazuke.Parameter{"target": focused, "stdin": {Type: "path", Path: ochazuke.PathFile, Required: true, Description: "File to use as stdin"}}, positional: []string{"target", "stdin"}, handler: a.on(a.runView), text: true, slot: "run", timeout: 15 * time.Minute, enabled: "view.stdin"},
+		{name: "history", description: "Open full-screen command history on the terminal", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.history), foreground: true, cli: a.historyCLI, enabled: "view.runs"},
+		{name: "stdin-file", description: "Choose a file to run with as stdin", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.stdinFile), enabled: "view.stdin"},
+		{name: "edit-stdin", foreground: true, description: "Edit an empty buffer and run with it as stdin", params: map[string]ochazuke.Parameter{"target": focused, "args": {Type: "array"}}, positional: []string{"target"}, handler: a.on(a.editStdin), enabled: "view.stdin", cli: func(ctx context.Context, args []string) error {
 			return a.runCLI(ctx, append([]string{"--edit-stdin"}, args...))
 		}},
-		{name: "rerun", foreground: true, description: "Repeat the latest run with its original args, cwd and stdin", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.rerunLast), cli: a.rerunLastCLI, enabled: "view.runs"},
-		{name: "runs", description: "List a command's run history, newest at the bottom", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.commandRuns), output: "run-table"},
-		{name: "runs-clear", description: "Remove a command's captured run history", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.clearRuns), destructive: true},
+		{name: "rerun", foreground: true, description: "Repeat the latest run with its original args, cwd and stdin", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.rerunLast), cli: a.rerunLastCLI, enabled: "view.runs"},
+		{name: "runs", description: "List a command's run history, newest at the bottom", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.commandRuns), output: "run-table"},
+		{name: "runs-clear", description: "Remove a command's captured run history", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.clearRuns), destructive: true},
 		{name: "add", description: "Record a shell script, including an empty or unassociated one", params: map[string]ochazuke.Parameter{"name": param("Name; duplicates receive a suffix"), "desc": param("Description"), "file": param("Read script from file; otherwise script or stdin"), "script": param("Script text"), "cwd": param("Working directory; absence is allowed"), "tags": {Type: "array", Description: "Tags"}, "author": param("Author name; defaults to agent environment or owner")}, handler: a.add},
 		{name: "list", description: "List numbered commands; newest at the bottom by default", params: map[string]ochazuke.Parameter{"filter": param("Match name, description or tags")}, handler: a.list, rows: true, output: "table"},
-		{name: "show", description: "Show a command's script and metadata", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.show), output: "script"},
-		{name: "run", foreground: true, description: "Run with sh in the recorded cwd, streaming output and preserving exit status", params: map[string]ochazuke.Parameter{"target": target, "args": {Type: "array", Description: "Script arguments (CLI also accepts -- args...)"}, "stdin": {Type: "path", Path: ochazuke.PathFile, Description: "File to use as stdin"}, "edit-stdin": {Type: "boolean", Description: "Edit an empty stdin buffer"}, "stdin-kind": {Type: "string", Enum: []string{"file", "edited"}, Description: "Input provenance; edited retains input for reruns"}}, positional: []string{"target"}, handler: a.on(a.execute), cli: a.runCLI},
-		{name: "copy", description: "Print the script, or --yank it to the clipboard", params: map[string]ochazuke.Parameter{"target": target, "yank": {Type: "boolean", Description: "Copy to clipboard"}}, positional: []string{"target"}, handler: a.on(a.copy), output: "script"},
-		{name: "edit", foreground: true, description: "Open $VISUAL/$EDITOR on the script; checkpoint its current contents for undo", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.edit)},
-		{name: "rename", description: "Rename immediately; duplicates receive a suffix", params: map[string]ochazuke.Parameter{"target": target, "name": required("New name")}, positional: []string{"target", "name"}, handler: a.on(a.rename)},
-		{name: "delete", description: "Hide a command immediately, retaining its script and undo history; agents use cmd.archive", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.archive(true)), agent: ochazuke.AgentNever},
-		{name: "archive", description: "Hide a command, retaining its script and undo history", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.archive(true)), agent: ochazuke.AgentAllow},
-		{name: "restore", description: "Restore an archived command by name or stable ID", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.archive(false)), agent: ochazuke.AgentAllow},
+		{name: "show", description: "Show a command's script and metadata", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.show), output: "script"},
+		{name: "run", foreground: true, description: "Run with sh in the recorded cwd, streaming output and preserving exit status", params: map[string]ochazuke.Parameter{"target": focused, "args": {Type: "array", Description: "Script arguments (CLI also accepts -- args...)"}, "stdin": {Type: "path", Path: ochazuke.PathFile, Description: "File to use as stdin"}, "edit-stdin": {Type: "boolean", Description: "Edit an empty stdin buffer"}, "stdin-kind": {Type: "string", Enum: []string{"file", "edited"}, Description: "Input provenance; edited retains input for reruns"}}, positional: []string{"target"}, handler: a.on(a.execute), cli: a.runCLI},
+		{name: "copy", description: "Print the script, or --yank it to the clipboard", params: map[string]ochazuke.Parameter{"target": focused, "yank": {Type: "boolean", Description: "Copy to clipboard"}}, positional: []string{"target"}, handler: a.on(a.copy), output: "script"},
+		{name: "edit", foreground: true, description: "Open $VISUAL/$EDITOR on the script; checkpoint its current contents for undo", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.edit)},
+		{name: "rename", description: "Rename immediately; duplicates receive a suffix", params: map[string]ochazuke.Parameter{"target": focused, "name": required("New name")}, positional: []string{"target", "name"}, handler: a.on(a.rename)},
+		{name: "delete", description: "Hide a command immediately, retaining its script and undo history; agents use cmd.archive", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.archive(true)), agent: ochazuke.AgentNever},
+		{name: "archive", description: "Hide a command, retaining its script and undo history", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.archive(true)), agent: ochazuke.AgentAllow},
+		{name: "restore", description: "Restore an archived command by name or stable ID", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.archive(false)), agent: ochazuke.AgentAllow},
 		{name: "undo", description: "Undo the most recent rename, delete, archive, restore, edit, pin, dismiss or reset change", handler: a.undo},
 		{name: "dismiss", description: "Mark a command (or the selected rows) seen without running it, so it no longer reads as new", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.dismiss(), many: true, agent: ochazuke.AgentAllow},
 		{name: "undismiss", description: "Mark a dismissed command (or the selected rows) new again", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.undismiss(), many: true, agent: ochazuke.AgentAllow},
 		{name: "reset", description: "Forget a command's runs: count to 0, new again; retained run records stay (cmd runs-clear deletes them)", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.reset(), many: true, confirm: "Reset the run count of {{label}} to 0? Retained run records stay; undo restores the count.", agent: ochazuke.AgentAllow},
-		{name: "pin", description: "Pin a command without moving its chronological position", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.pin(true))},
-		{name: "unpin", description: "Unpin a command", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.pin(false))},
-		{name: "star", description: "Toggle a command's pin", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.on(a.star)},
-		{name: "path", description: "Print a command's script path, or the storage directory", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.path, output: "path"},
+		{name: "pin", description: "Pin a command without moving its chronological position", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.pin(true))},
+		{name: "unpin", description: "Unpin a command", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.pin(false))},
+		{name: "star", description: "Toggle a command's pin", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.star)},
+		{name: "path", description: "Print a command's script path, or the storage directory", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.path, output: "path"},
 	}
 }
 
@@ -254,7 +260,12 @@ func (a *App) newestFirst() bool { return a.r.Settings().String("list.order") ==
 func (a *App) target(c ochazuke.Ctx) (Command, error) {
 	t := ochazuke.StringArg(c.Args, "target", "")
 	if t == "" && c.Instance != nil {
-		t, _ = c.Instance.Data.(string)
+		switch d := c.Instance.Data.(type) {
+		case string:
+			t = d
+		case map[string]any:
+			t, _ = d["id"].(string)
+		}
 		if t == "" {
 			t = c.Instance.ID
 		}

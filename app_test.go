@@ -52,6 +52,30 @@ func TestRenameRequiresAName(t *testing.T) {
 	}
 }
 
+// A verb that acts on one command declares its target as the focused row's
+// id (Parameter.From), so the args form names the row; the verbs that take the
+// marked rows keep a plain target.
+func TestSingleCommandTargetsComeFromTheRow(t *testing.T) {
+	a, e := newApp(fixture(t), strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	if e != nil {
+		t.Fatal(e)
+	}
+	many := map[string]bool{"cmd.dismiss": true, "cmd.undismiss": true, "cmd.reset": true}
+	for key, op := range a.r.Operations {
+		p, ok := op.Parameters["target"]
+		if !ok || !strings.HasPrefix(key, "cmd.") {
+			continue
+		}
+		want := "row:id"
+		if many[key] {
+			want = ""
+		}
+		if p.From != want {
+			t.Errorf("%s target From %q, want %q", key, p.From, want)
+		}
+	}
+}
+
 func TestCLIAddListShowRenameDeleteUndo(t *testing.T) {
 	s := fixture(t)
 	at := s.now()
