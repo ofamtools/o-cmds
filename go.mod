@@ -8,7 +8,7 @@ require (
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/creack/pty v1.1.24
 	golang.org/x/sys v0.47.0
-	ofam.dev/ochazuke v0.91.0
+	ofam.dev/ochazuke v0.92.0
 	ofam.dev/oden v0.2.0
 )
 

@@ -173,7 +173,7 @@ func TestCLISettingsAndPin(t *testing.T) {
 	first := addCommand(t, s, "old", "echo old")
 	s.Now = func() time.Time { return time.Date(2026, 10, 31, 0, 0, 0, 0, time.UTC) }
 	addCommand(t, s, "new", "echo new")
-	_, e := invoke(t, s, "", "settings", "set", "list.order", "newest-first", "--yes")
+	_, e := invoke(t, s, "", "setting", "set", "list.order", "newest-first", "--scope", "file", "--yes")
 	if e != nil {
 		t.Fatal(e)
 	}

@@ -303,7 +303,7 @@ and stdin while allowing interactive reruns.
 
 `cmd.run-view` and `cmd.run-file` publish a shared per-row `run` slot and a
 15-minute captured limit. Pressing Enter twice while a run is active starts
-only one run. The host can cancel it through `jobs.cancel`; a limit or
+only one run. The host can cancel it through `ochazuke.job.cancel`; a limit or
 cancellation stops the process group and lets the recorder close its record.
 The captured answer returns `{"title":"NAME · exit N","text":"…"}`.
 The host uses that title unless `text-view.result-title=false`.
@@ -414,11 +414,11 @@ TUI and MCP work without it. `shell-init` only prints the function; it edits no
 dotfiles, installs no hooks, and needs `o-cmds` on PATH when the function runs.
 
 ```sh
-o cmds settings set list.order newest-first --yes
-o cmds settings set list.start-newest false --yes
-o cmds settings set view.detail false --yes
-o cmds settings set view.detail-style markdown --yes
-o cmds settings set list.refresh 0s --yes
+o cmds setting set list.order newest-first --scope file --yes
+o cmds setting set list.start-newest false --scope file --yes
+o cmds setting set view.detail false --scope file --yes
+o cmds setting set view.detail-style markdown --scope file --yes
+o cmds setting set list.refresh 0s --scope file --yes
 ```
 
 Defaults: `list.order=oldest-first`, `list.start-newest=true`,

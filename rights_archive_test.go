@@ -51,7 +51,7 @@ func TestAgentArchiveRestoreAndReset(t *testing.T) {
 	if text, e := s.Script(c); e != nil || text != "printf 'retained bytes\\n'\n" {
 		t.Fatal(text, e)
 	}
-	call("settings", "set", "list.hide-archived", "false")
+	call("setting", "set", "list.hide-archived", "false", "--scope", "file")
 	var listed []ocli.Row
 	if e := json.Unmarshal([]byte(call("cmd", "list", "--json", "{}")), &listed); e != nil {
 		t.Fatal(e)
