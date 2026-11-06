@@ -60,7 +60,7 @@ func TestAgentArchiveRestoreAndReset(t *testing.T) {
 		t.Fatal(listed)
 	}
 	for range 2 {
-		call("cmd", "restore", c.ID)
+		call("cmd", "set", c.ID, "--props", `{"@archive":false}`)
 	}
 	rows, e = s.List()
 	if e != nil || len(rows) != 2 || rows[0].ID != c.ID || rows[0].Deleted {
@@ -118,7 +118,6 @@ func TestCommandRightsCatalog(t *testing.T) {
 	}{
 		"cmd.delete":     {ochazuke.AgentNever, false},
 		"cmd.archive":    {ochazuke.AgentAllow, false},
-		"cmd.restore":    {ochazuke.AgentAllow, false},
 		"cmd.reset":      {ochazuke.AgentAllow, false},
 		"cmd.runs-clear": {ochazuke.AgentNever, true},
 		"run.delete":     {ochazuke.AgentNever, true},
@@ -151,7 +150,7 @@ func TestRestoreKeepsNamesDistinct(t *testing.T) {
 	if got, e := s.Resolve("same", false); e != nil || got.ID != live.ID {
 		t.Fatal(got, e)
 	}
-	if _, e := invoke(t, s, "", "cmd", "restore", c.ID); e != nil {
+	if _, e := invoke(t, s, "", "cmd", "set", c.ID, "--props", `{"@archive":false}`); e != nil {
 		t.Fatal(e)
 	}
 	got, e := s.Resolve(c.ID, false)

@@ -152,8 +152,8 @@ func newApp(s *Store, in io.Reader, out, errOut io.Writer) (*App, error) {
 	a.r.DefineGuard("stdin-ui", func(r *ochazuke.Runtime, _ ochazuke.KeyEvent) bool { return r.Settings().Bool("view.stdin") })
 	a.r.DefineGuard("history-ui", func(r *ochazuke.Runtime, _ ochazuke.KeyEvent) bool { return r.Settings().Bool("view.runs") })
 	a.runCols = a.r.Settings().Bool("view.run-columns")
-	a.r.Define("cmd").Columns(cmdColumns(a.runCols)...)
-	a.r.Define("run").Columns(runColumns...)
+	a.r.Define("cmd").Columns(cmdColumns(a.runCols)...).Props(cmdStoreProps()...).Store(a.cmdStore())
+	a.r.Define("run").Columns(runColumns...).Props(runProps()...).Store(a.runStore())
 	// Every application key is a binding row. Help/footer hints read the
 	// runtime's effective bindings, including owner overrides.
 	a.r.Define("cmd").Mode("normal").
@@ -240,10 +240,7 @@ func (a *App) specs() []verbSpec {
 		{name: "run", foreground: true, description: "Run with sh in the recorded cwd, streaming output and preserving exit status", params: map[string]ochazuke.Parameter{"target": focused, "args": {Type: "array", Description: "Script arguments (CLI also accepts -- args...)"}, "stdin": {Type: "path", Path: ochazuke.PathFile, Description: "File to use as stdin"}, "edit-stdin": {Type: "boolean", Description: "Edit an empty stdin buffer"}, "stdin-kind": {Type: "string", Enum: []string{"file", "edited"}, Description: "Input provenance; edited retains input for reruns"}}, positional: []string{"target"}, handler: a.on(a.execute), cli: a.runCLI},
 		{name: "copy", description: "Print the script, or --yank it to the clipboard", params: map[string]ochazuke.Parameter{"target": focused, "yank": {Type: "boolean", Description: "Copy to clipboard"}}, positional: []string{"target"}, handler: a.on(a.copy), output: "script"},
 		{name: "edit", foreground: true, description: "Open $VISUAL/$EDITOR on the script; checkpoint its current contents for undo", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.edit)},
-		{name: "rename", description: "Rename immediately; duplicates receive a suffix", params: map[string]ochazuke.Parameter{"target": focused, "name": required("New name")}, positional: []string{"target", "name"}, handler: a.on(a.rename)},
 		{name: "delete", description: "Hide a command immediately, retaining its script and undo history; agents use cmd.archive", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.archive(true)), agent: ochazuke.AgentNever},
-		{name: "archive", description: "Hide a command, retaining its script and undo history", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.archive(true)), agent: ochazuke.AgentAllow},
-		{name: "restore", description: "Restore an archived command by name or stable ID", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.archive(false)), agent: ochazuke.AgentAllow},
 		{name: "undo", description: "Undo the most recent rename, delete, archive, restore, edit, pin, dismiss or reset change", handler: a.undo},
 		{name: "dismiss", description: "Mark a command (or the selected rows) seen without running it, so it no longer reads as new", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.dismiss(), many: true, agent: ochazuke.AgentAllow},
 		{name: "undismiss", description: "Mark a dismissed command (or the selected rows) new again", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.undismiss(), many: true, agent: ochazuke.AgentAllow},
@@ -530,11 +527,6 @@ func (a *App) change(row Command, fn func(*Command, []Command)) ochazuke.Result 
 	v, e := a.store.Change(row.ID, fn)
 	a.refresh()
 	return result(v, e)
-}
-func (a *App) rename(c ochazuke.Ctx, row Command) ochazuke.Result {
-	return a.change(row, func(v *Command, rows []Command) {
-		v.Name = uniqueName(ochazuke.StringArg(c.Args, "name", ""), rows, v.ID)
-	})
 }
 func (a *App) archive(value bool) func(ochazuke.Ctx, Command) ochazuke.Result {
 	return func(_ ochazuke.Ctx, row Command) ochazuke.Result {

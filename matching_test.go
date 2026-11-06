@@ -51,7 +51,7 @@ func TestCommandMatchingAmbiguousNumberedInDisplayOrder(t *testing.T) {
 }
 
 func TestCommandMatchingEveryTargetVerb(t *testing.T) {
-	for _, verb := range []string{"show", "run", "copy", "edit", "rename", "delete", "pin", "unpin", "star", "path"} {
+	for _, verb := range []string{"show", "run", "copy", "edit", "delete", "pin", "unpin", "star", "path"} {
 		t.Run(verb, func(t *testing.T) {
 			s := fixture(t)
 			command := addCommand(t, s, "play-o-json-tutorials", "printf tutorial\n")
@@ -69,9 +69,6 @@ func TestCommandMatchingEveryTargetVerb(t *testing.T) {
 				return nil
 			}
 			args := []string{"cmd", verb, "play"}
-			if verb == "rename" {
-				args = append(args, "renamed")
-			}
 			if e = dispatch(a, args); e != nil {
 				t.Fatal(e)
 			}
@@ -83,7 +80,7 @@ func TestCommandMatchingEveryTargetVerb(t *testing.T) {
 }
 
 func TestCommandMatchingAmbiguityNeverActs(t *testing.T) {
-	for _, verb := range []string{"show", "run", "copy", "edit", "rename", "delete", "pin", "unpin", "star", "path"} {
+	for _, verb := range []string{"show", "run", "copy", "edit", "delete", "pin", "unpin", "star", "path"} {
 		t.Run(verb, func(t *testing.T) {
 			s := fixture(t)
 			addCommand(t, s, "play-one", "one")
@@ -95,9 +92,6 @@ func TestCommandMatchingAmbiguityNeverActs(t *testing.T) {
 			}
 			a.run = func(*exec.Cmd) error { t.Fatal("ambiguous input executed a process"); return nil }
 			args := []string{"cmd", verb, "play"}
-			if verb == "rename" {
-				args = append(args, "renamed")
-			}
 			if e = dispatch(a, args); e == nil || !strings.Contains(e.Error(), "1  play-one\n  2  play-two") {
 				t.Fatalf("ambiguity=%v", e)
 			}

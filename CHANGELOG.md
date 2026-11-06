@@ -2,10 +2,12 @@
 
 ## Unreleased
 
+- Changed: cmd and run are thing nouns with stores (cmd: list, get, set, archive; run: list, get, delete). `cmd archive` is the standard archive; `cmd delete`, `cmd list`, `cmd edit`, `run list` and `run delete` stay as named verbs.
+- Removed: `cmd rename` (`cmd set NAME --props '{"@label": NEW}'`) and `cmd restore` (`cmd set NAME --props '{"@archive": false}'`); no aliases. `set` names a command exactly (a name, ID or `cmd/ID`), never by prefix or displayed number.
 * The "Commands for the owner (o-cmds)" setup note now says: whenever an agent asks the owner to run a command or code, it first registers it as a self-contained bash/zsh script in o-cmds and tells the owner its name. Text is identical to the owner's global instructions.
 * Add `o-cmds setup status|list|plan|install|uninstall`: a managed `o-cmds` block in the Claude and Codex instruction files telling agents to record commands for the owner with `cmd add` (setting `setup.skip`, symlink-following, backups).
 
-* Declare retained `cmd.delete` agent-never and add repeatable, undoable `cmd.archive`/`cmd.restore` through the same soft-delete flag handler. Open `cmd.reset` for agents while retaining run records. Mark `run.delete` and `cmd.runs-clear` Destructive so catalog hosts and the standalone gate refuse stream loss. Mutation/undo snapshots retain the acting framework identity; original authors remain unchanged. `list.hide-archived` defaults to true and opts out of hiding command rows.
+* Declare retained `cmd.delete` agent-never and add repeatable, undoable `cmd.archive` and its restore through the same soft-delete flag handler. Open `cmd.reset` for agents while retaining run records. Mark `run.delete` and `cmd.runs-clear` Destructive so catalog hosts and the standalone gate refuse stream loss. Mutation/undo snapshots retain the acting framework identity; original authors remain unchanged. `list.hide-archived` defaults to true and opts out of hiding command rows.
 
 * Upgrade ochazuke to v0.83.0; the script viewer uses shared modal closing and
   window-sized page/edge motions (`gg`, `G`, Ctrl-D/U/F/B), and empty run text

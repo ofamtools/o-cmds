@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 
@@ -90,6 +91,32 @@ func dispatch(a *App, args []string) error {
 			if v.cli != nil {
 				return v.cli(ctx, words)
 			}
+			return a.verbCLI(sh, v, words)
+		}})
+	}
+	// The standard verbs of the thing nouns (get, set, create, archive, ...)
+	// that no named verb replaces are reachable beside the named ones.
+	named := map[string]bool{}
+	for _, spec := range a.verbs() {
+		named[spec.noun+"."+spec.name] = true
+	}
+	keys := make([]string, 0, len(a.r.Operations))
+	for key := range a.r.Operations {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	for _, key := range keys {
+		op := a.r.Operations[key]
+		if _, ours := groups[op.Noun]; !ours || op.Standard == "" || named[key] {
+			continue
+		}
+		v := verbSpec{noun: op.Noun, name: op.Verb, description: op.Description}
+		params := []oden.Parameter{}
+		for _, name := range op.ParameterOrder() {
+			p := op.Parameters[name]
+			params = append(params, oden.Parameter{Name: name, Type: p.Type, Description: p.Description, Required: p.Required})
+		}
+		groups[v.noun] = append(groups[v.noun], oden.Command{Name: v.name, Summary: v.description, Parameters: params, Usage: "[NAME|NUMBER] [--flags]", Run: func(ctx context.Context, words []string) error {
 			return a.verbCLI(sh, v, words)
 		}})
 	}

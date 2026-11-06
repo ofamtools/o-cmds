@@ -73,14 +73,14 @@ o cmds cmd show 1
 o cmds cmd copy hello            # print the exact script bytes
 o cmds cmd copy hello --yank     # also copy to the clipboard
 EDITOR='code --wait' o cmds cmd edit hello
-o cmds cmd rename hello greeting
+o cmds cmd set hello --props '{"@label":"greeting"}'   # rename
 o cmds cmd pin greeting          # show a star, keep chronological position
 o cmds cmd star greeting         # toggle the pin
 o cmds cmd unpin greeting
 o cmds cmd delete greeting       # hide; keep script and history
 o cmds cmd undo                  # restore the most recent change
 o cmds cmd archive greeting      # agents hide without deleting
-o cmds cmd restore greeting      # restore the retained command
+o cmds cmd set greeting --props '{"@archive":false}'   # restore the retained command
 o cmds cmd path greeting         # script path
 o cmds cmd path                  # storage directory
 o cmds cmd list --filter deploy
@@ -192,7 +192,7 @@ them), and undoing a reset restores the old count plus any runs since.
 
 Agents may read and write, including `cmd.reset`; an allowed agent call passes
 its confirmation prompt. `cmd.delete` is declared agent-never even though it
-only hides. Use `cmd.archive` and `cmd.restore`, which share the retained flag
+only hides. Use `cmd.archive` and `cmd.set` with `@archive` false, which share the retained flag
 handler. `run.delete` and `cmd.runs-clear` are destructive and agent-never
 because they remove captured streams. Owner `agents.rights` rules still apply.
 
