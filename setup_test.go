@@ -60,7 +60,7 @@ func TestSetupInstructionNote(t *testing.T) {
 	for _, path := range []string{claude, codex} {
 		b, _ := os.ReadFile(path)
 		text := string(b)
-		if strings.Count(text, "<!-- o-cmds:begin -->") != 1 || !strings.Contains(text, "## Commands for the owner (o-cmds)") || !strings.Contains(text, "cmd add") || !strings.Contains(text, "first register it in o-cmds as a self-contained bash/zsh script") {
+		if strings.Count(text, "<!-- o-cmds:begin -->") != 1 || !strings.Contains(text, "## Commands for the owner (o-cmds)") || !strings.Contains(text, "cmd add") || !strings.Contains(text, "first record it in o-cmds as a self-contained bash/zsh script") || !strings.Contains(text, "mtm cmds cmd add") || !strings.Contains(text, "cmds.cmd add") || strings.Contains(text, "`o-cmds cmd add") {
 			t.Fatalf("%s:\n%s", path, text)
 		}
 	}

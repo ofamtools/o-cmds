@@ -101,8 +101,10 @@ preserved, including when the script is empty or has no trailing newline.
 `o-cmds setup` adds a managed block to the agents' instruction files
 (`${CLAUDE_CONFIG_DIR:-~/.claude}/CLAUDE.md`, `~/.codex/AGENTS.md`) between
 `<!-- o-cmds:begin -->` and `<!-- o-cmds:end -->`. It tells agents to record
-commands they give you with `o-cmds cmd add` (or `cmds.cmd add` through the mtm
-MCP gateway), with self-contained scripts and no secrets or host details.
+commands they give you, through mtm only: `cmds.cmd add` on the mtm MCP gateway
+or `mtm cmds cmd add` on the CLI, with self-contained scripts and no secrets or
+host details. Agents never call the `o-cmds` binary; you run commands with
+`o-cmds cmd run`.
 
 ```sh
 o cmds setup                  # status

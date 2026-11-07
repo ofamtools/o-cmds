@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Changed: the "Commands for the owner (o-cmds)" setup note now tells agents to record and read commands only through mtm (`cmds.cmd add` on the MCP gateway, `mtm cmds cmd add` on the CLI, `mtm cmds cmd runs` and `mtm cmds run ...` for what happened), never the `o-cmds` binary, and to record code and recipes as well as commands.
 - Changed: cmd and run are thing nouns with stores (cmd: list, get, set, archive; run: list, get, delete). `cmd archive` is the standard archive; `cmd delete`, `cmd list`, `cmd edit`, `run list` and `run delete` stay as named verbs.
 - Removed: `cmd rename` (`cmd set NAME --props '{"@label": NEW}'`) and `cmd restore` (`cmd set NAME --props '{"@archive": false}'`); no aliases. `set` names a command exactly (a name, ID or `cmd/ID`), never by prefix or displayed number.
 * The "Commands for the owner (o-cmds)" setup note now says: whenever an agent asks the owner to run a command or code, it first registers it as a self-contained bash/zsh script in o-cmds and tells the owner its name. Text is identical to the owner's global instructions.
