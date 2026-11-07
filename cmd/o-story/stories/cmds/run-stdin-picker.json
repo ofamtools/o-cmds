@@ -1,5 +1,5 @@
 {
-  "name": "stdin file chooser opens and cancels back to the command",
+  "name": "stdin file picker opens and cancels back to the command",
   "commands": [{"name": "consume-input", "script": "cat"}],
   "script": ["g", "i", "esc"],
   "expect": [

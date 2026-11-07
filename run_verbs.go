@@ -114,22 +114,22 @@ func (a *App) commandRuns(_ ochazuke.Ctx, c Command) ochazuke.Result {
 		if !a.r.Settings().Bool("view.runs") {
 			return ochazuke.Done(nil)
 		}
-		choices := make([]ochazuke.ChooserRow, 0, len(rows))
+		choices := make([]ochazuke.PickerRow, 0, len(rows))
 		for _, row := range rows {
 			r := row.Run
 			tone := ochazuke.ToneErrored
 			if r.ExitCode != nil && *r.ExitCode == 0 {
 				tone = ochazuke.ToneDone
 			}
-			choices = append(choices, ochazuke.ChooserRow{ID: r.ID, Label: runSummary(r), Data: r.ID, Cells: []string{strconv.Itoa(row.Number), runSummary(r)}, Tones: []ochazuke.ToneSpan{{Cell: 1, Tone: tone}}})
+			choices = append(choices, ochazuke.PickerRow{ID: r.ID, Label: runSummary(r), Data: r.ID, Cells: []string{strconv.Itoa(row.Number), runSummary(r)}, Tones: []ochazuke.ToneSpan{{Cell: 1, Tone: tone}}})
 		}
-		_, e := a.r.OpenChooser(ochazuke.ChooserSpec{Kind: "run-history", Stay: a.r.Settings().Bool("history.keep-open"), Title: "Runs: " + c.Name, Rows: choices, Plural: "runs", Empty: "no recorded runs", Preview: func(row ochazuke.ChooserRow) string {
+		_, e := a.r.OpenPicker(ochazuke.PickerSpec{Kind: "run-history", Stay: a.r.Settings().Bool("history.keep-open"), Title: "Runs: " + c.Name, Rows: choices, Plural: "runs", Empty: "no recorded runs", Preview: func(row ochazuke.PickerRow) string {
 			r, e := a.store.ReadRun(row.ID)
 			if e != nil {
 				return e.Error()
 			}
 			return runText(r)
-		}, Choose: func(row ochazuke.ChooserRow) ochazuke.Result {
+		}, Choose: func(row ochazuke.PickerRow) ochazuke.Result {
 			r, e := a.store.ReadRun(row.ID)
 			if e != nil {
 				return ochazuke.Failed(e)

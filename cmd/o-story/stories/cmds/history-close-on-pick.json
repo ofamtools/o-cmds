@@ -1,5 +1,5 @@
 {
-  "name": "history keep-open opt-out closes the chooser on a pick",
+  "name": "history keep-open opt-out closes the picker on a pick",
   "commands": [{"name": "one-history", "script": "echo retained\n"}],
   "settings": {"history.keep-open": false},
   "runs": [{"command": "one-history", "stdout": "retained output", "stderr": "", "exitCode": 0}],

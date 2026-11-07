@@ -1,6 +1,7 @@
 # Code map
 
 * `main.go`: global data override, oden dispatch, CLI stream/output adapters.
+* `pickers.go`: the cmd and run noun pickers (`PickerDef`), listed by the catalog.
 * `app.go`: command noun, shared verbs and parameters, declarative agent and
   destruction metadata, transport-bound mutation identity, archive/restore flag
   handler, bindings, settings, catalog page and row formatting. Custom rows
@@ -13,7 +14,7 @@
   and receipts (batched for selections; the run counter is never rolled back)
   and the durable run counter.
 * `stdin.go`: explicit input descriptors, hashing/capped snapshots, shared
-  path chooser with retained recent inputs, private editor buffer lifecycle.
+  path picker with retained recent inputs, private editor buffer lifecycle.
 * `process.go`: injectable process runner, sh/editor/clipboard commands.
 * `run_capture.go`: shared CLI/foreground recorder, capped tee streams and
   independent output PTYs with resize and bounded draining.
@@ -22,7 +23,7 @@
 * `run_state.go`: a command's run state (new/ran/dismissed, count since reset,
   last run) from the durable counter; dismiss/undismiss/reset over a selection
   as one undo step; the new-row tone and Runs/Last cells.
-* `run_verbs.go`: run noun, command history relations, history chooser and
+* `run_verbs.go`: run noun, command history relations, history picker and
   output viewer, CLI stream/table adapters and rerun with original args/cwd.
 * `mounted_results.go`: titled text script/run verbs, cancellable captured
   execution through the shared recorder, and selected-row foreground history.

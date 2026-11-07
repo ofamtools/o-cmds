@@ -13,10 +13,10 @@ has not been migrated.
 |---|---|---|
 | `v` | `cmd.view`, result `text` | Read-only script text viewer; standalone retains its numbered script viewer |
 | Enter | `cmd.run-view`, result `text` | Run with the shared recorder, then read captured stdout, stderr and exit status; both streams are capped by `runs.max-bytes` |
-| `H` | `cmd.history`, `foreground: true` | Full-screen o-cmds history with the existing chooser and output preview; closing its last modal returns to the host |
+| `H` | `cmd.history`, `foreground: true` | Full-screen o-cmds history with the existing picker and output preview; closing its last modal returns to the host |
 | `e` | `cmd.edit`, `foreground: true` | `$VISUAL`/`$EDITOR` receives a real terminal, including stdin |
 | `g e` | `cmd.edit-stdin`, `foreground: true` | Editor and script run receive the terminal |
-| `g i` | `cmd.run-file`, required path `stdin`, result `text` | Host's existing required-path chooser, then a captured output viewer; standalone retains its native stdin picker |
+| `g i` | `cmd.run-file`, required path `stdin`, result `text` | Host's existing required-path picker, then a captured output viewer; standalone retains its native stdin picker |
 | `g r` | `cmd.rerun`, `foreground: true` | Rerun with original args/cwd/stdin on the terminal; output remains in recorded history |
 
 `cmd.run` remains a foreground streaming command for CLI and palette use.
@@ -49,6 +49,6 @@ The PTY smoke exercises mtm's `v`, Enter, `H`, `e`, `g i`, `g r`, and `g e`
 paths and records terminal handoff frames.
 
 Reuse: ochazuke's existing text viewer and foreground delivery, o-cmds'
-`prepareRun` recorder/capped streams, history chooser/`runText`, and the
+`prepareRun` recorder/capped streams, history picker/`runText`, and the
 previous text-results lane's interaction-snapshot tests. No owner config or
 live application data is needed.

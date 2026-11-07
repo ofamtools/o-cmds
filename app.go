@@ -102,7 +102,7 @@ func newApp(s *Store, in io.Reader, out, errOut io.Writer) (*App, error) {
 		ochazuke.Setting{Name: "runs.max-bytes", Type: ochazuke.SettingInteger, Default: 1024 * 1024, Description: "Bytes retained per stdout/stderr/stdin stream", Validate: nonnegative},
 		ochazuke.Setting{Name: "view.stdin", Type: ochazuke.SettingBoolean, Default: true, Description: "Enable TUI stdin file picker and editor actions"},
 		ochazuke.Setting{Name: "view.runs", Type: ochazuke.SettingBoolean, Default: true, Description: "Show last-run status and enable the TUI history view"},
-		ochazuke.Setting{Name: "history.keep-open", Type: ochazuke.SettingBoolean, Default: true, Description: "Return from a run viewer to its history chooser; off closes history when a run is picked"},
+		ochazuke.Setting{Name: "history.keep-open", Type: ochazuke.SettingBoolean, Default: true, Description: "Return from a run viewer to its history picker; off closes history when a run is picked"},
 		ochazuke.Setting{Name: "list.order", Type: ochazuke.SettingString, Default: "oldest-first", Enum: []string{"oldest-first", "newest-first"}, Description: "Command order, including numbered CLI targets"},
 		ochazuke.Setting{Name: "list.start-newest", Type: ochazuke.SettingBoolean, Default: true, Description: "Start the standalone page on the newest command"},
 		ochazuke.Setting{Name: "view.detail", Type: ochazuke.SettingBoolean, Default: true, Description: "Show the script and metadata beside the command list"},
@@ -179,6 +179,9 @@ func newApp(s *Store, in io.Reader, out, errOut io.Writer) (*App, error) {
 		return nil, err
 	}
 	if err := ocli.DeclarePage(a.r, commandPage(a.r.Settings().Bool("view.detail"))); err != nil {
+		return nil, err
+	}
+	if err := declarePickers(a.r); err != nil {
 		return nil, err
 	}
 	return a, nil

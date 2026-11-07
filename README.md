@@ -126,7 +126,7 @@ o cmds cmd rerun hello             # latest run, including its input source
 o cmds run in 1                    # exact retained input bytes
 ```
 
-On a command row, `g i` opens ochazuke's file chooser at the caller's current
+On a command row, `g i` opens ochazuke's file picker at the caller's current
 working directory. Its browse, recent and typed-path sources provide navigation
 and path completion; recent includes file inputs from retained runs as well as
 paths picked this session. Escape cancels. `g e` opens an empty private temp file
@@ -281,7 +281,7 @@ are nonnegative integers. `view.runs=false` hides the last-run status and disabl
 the history modal without disabling recording or CLI access.
 
 The command preview shows the latest run's status, time and duration. `H` opens
-the focused command's history, with the framework chooser's binding-derived
+the focused command's history, with the framework picker's binding-derived
 hints and output preview. Its normal search and movement bindings apply;
 Enter opens the selected run in the scrollable viewer. Escape returns to the
 run list, then another Escape returns to the host. `history.keep-open=false`
@@ -296,8 +296,8 @@ viewers. Standalone Enter keeps its streaming terminal handoff through
 for hosts. `cmd.show` and `run.show` keep structured MCP/CLI answers, while
 `run.view` returns labelled text. See [Family integration](docs/INTEGRATION.md).
 Hosted `g i` uses `cmd.run-file` with a required stdin path, so the host opens
-its shared file chooser before showing the captured run. Standalone `g i`
-keeps its existing stdin chooser and streaming execution. `cmd.rerun` (`g r`)
+its shared file picker before showing the captured run. Standalone `g i`
+keeps its existing stdin picker and streaming execution. `cmd.rerun` (`g r`)
 and `run.rerun` declare foreground execution, preserving original args, cwd
 and stdin while allowing interactive reruns.
 
