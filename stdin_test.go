@@ -266,7 +266,7 @@ func TestStdinLatestRerunAndBindings(t *testing.T) {
 	}
 	keys := func() map[string]int {
 		keys := map[string]int{}
-		for _, row := range ochazuke.BindingHelp(a.r, a.r.Focus) {
+		for _, row := range ochazuke.BindingHelp(a.r, a.r.FocusID()) {
 			keys[row.Key]++
 		}
 		return keys
