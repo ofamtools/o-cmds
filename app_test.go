@@ -54,7 +54,7 @@ func TestSingleCommandTargetsComeFromTheRow(t *testing.T) {
 		t.Fatal(e)
 	}
 	many := map[string]bool{"cmd.dismiss": true, "cmd.undismiss": true, "cmd.reset": true}
-	for key, op := range a.r.Operations {
+	for key, op := range a.r.Operations.Entries() {
 		p, ok := op.Parameters["target"]
 		if !ok || !strings.HasPrefix(key, "cmd.") {
 			continue
@@ -387,5 +387,23 @@ func TestEditAndClipboardUseInjectedRunner(t *testing.T) {
 	text, e := s.Script(restored)
 	if e != nil || text != "old bytes\n" {
 		t.Fatalf("undo editor=%q %v", text, e)
+	}
+}
+
+func TestCatalogDeclaresSingularNamespace(t *testing.T) {
+	s := fixture(t)
+	out, e := invoke(t, s, "", "catalog")
+	if e != nil {
+		t.Fatal(e)
+	}
+	var doc ocli.CatalogDoc
+	if e = json.Unmarshal([]byte(out), &doc); e != nil {
+		t.Fatal(e)
+	}
+	if doc.Namespace != "cmd" || ochazuke.DefaultNamespace != "cmd" {
+		t.Fatalf("catalog namespace %q, default %q; want cmd", doc.Namespace, ochazuke.DefaultNamespace)
+	}
+	if got, e := ocli.CatalogNamespace(doc, "o-cmds"); e != nil || got != "cmd" {
+		t.Fatal(got, e)
 	}
 }

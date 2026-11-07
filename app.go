@@ -93,6 +93,16 @@ func standalonePage(r *ochazuke.Runtime) ocli.CatalogPage {
 	return p
 }
 
+// Namespace is the singular namespace o-cmds declares (lexicon plan): its
+// operations are cmd.<noun>.<verb> and a host mounts its catalog under it.
+const Namespace = "cmd"
+
+func init() {
+	if err := ochazuke.DeclareNamespace(Namespace); err != nil {
+		panic(err)
+	}
+}
+
 func newApp(s *Store, in io.Reader, out, errOut io.Writer) (*App, error) {
 	a := &App{store: s, in: in, out: out, errOut: errOut, run: func(c *exec.Cmd) error { return c.Run() }}
 	a.r = ochazuke.NewRuntime()
@@ -142,11 +152,11 @@ func newApp(s *Store, in io.Reader, out, errOut io.Writer) (*App, error) {
 		if spec.destructive {
 			b.Destructive()
 		}
-		op := a.r.Operations[spec.noun+"."+spec.name]
+		op := a.r.Operations.At(ochazuke.Key(spec.noun + "." + spec.name))
 		op.Parameters = spec.params
 		op.Slot, op.Timeout = spec.slot, spec.timeout
 		op.EnabledSetting = spec.enabled
-		a.r.Operations[op.Key()] = op
+		a.r.Operations.Set(op)
 	}
 	a.r.SetRecentPaths(a.recentInputs)
 	a.r.DefineGuard("stdin-ui", func(r *ochazuke.Runtime, _ ochazuke.KeyEvent) bool { return r.Settings().Bool("view.stdin") })

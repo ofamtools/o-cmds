@@ -16,6 +16,7 @@ import (
 	"strings"
 	"syscall"
 
+	"ofam.dev/ochazuke"
 	ocli "ofam.dev/ochazuke/cli"
 	"ofam.dev/oden"
 )
@@ -83,7 +84,7 @@ func dispatch(a *App, args []string) error {
 	for _, spec := range a.verbs() {
 		v := spec
 		params := []oden.Parameter{}
-		for _, name := range a.r.Operations[v.noun+"."+v.name].ParameterOrder() {
+		for _, name := range a.r.Operations.At(ochazuke.Key(v.noun + "." + v.name)).ParameterOrder() {
 			p := v.params[name]
 			params = append(params, oden.Parameter{Name: name, Type: p.Type, Description: p.Description, Required: p.Required})
 		}
@@ -100,17 +101,17 @@ func dispatch(a *App, args []string) error {
 	for _, spec := range a.verbs() {
 		named[spec.noun+"."+spec.name] = true
 	}
-	keys := make([]string, 0, len(a.r.Operations))
-	for key := range a.r.Operations {
+	keys := make([]string, 0, a.r.Operations.Len())
+	for key := range a.r.Operations.Entries() {
 		keys = append(keys, key)
 	}
 	slices.Sort(keys)
 	for _, key := range keys {
-		op := a.r.Operations[key]
-		if _, ours := groups[op.Noun]; !ours || op.Standard == "" || named[key] {
+		op := a.r.Operations.At(ochazuke.Key(key))
+		if _, ours := groups[op.Noun()]; !ours || op.Standard == "" || named[key] {
 			continue
 		}
-		v := verbSpec{noun: op.Noun, name: op.Verb, description: op.Description}
+		v := verbSpec{noun: op.Noun(), name: op.Name(), description: op.Description}
 		params := []oden.Parameter{}
 		for _, name := range op.ParameterOrder() {
 			p := op.Parameters[name]

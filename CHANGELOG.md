@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Changed: requires ochazuke v0.102.0 and oden v0.3.0 (the Operations registry and three-part keys; `cmd/opname` moved the code). o-cmds declares its namespace, `cmd` (`ochazuke.DeclareNamespace`), so its keys are `cmd.cmd.<verb>` and the catalog carries `namespace: cmd`. CLI spellings are unchanged; a host that honours the declared namespace names the MCP verbs `cmd.cmd add` instead of `cmds.cmd add`.
 - Changed: the "Commands for the owner (o-cmds)" setup note now tells agents to record and read commands only through mtm (`cmds.cmd add` on the MCP gateway, `mtm cmds cmd add` on the CLI, `mtm cmds cmd runs` and `mtm cmds run ...` for what happened), never the `o-cmds` binary, and to record code and recipes as well as commands.
 - Changed: cmd and run are thing nouns with stores (cmd: list, get, set, archive; run: list, get, delete). `cmd archive` is the standard archive; `cmd delete`, `cmd list`, `cmd edit`, `run list` and `run delete` stay as named verbs.
 - Removed: `cmd rename` (`cmd set NAME --props '{"@label": NEW}'`) and `cmd restore` (`cmd set NAME --props '{"@archive": false}'`); no aliases. `set` names a command exactly (a name, ID or `cmd/ID`), never by prefix or displayed number.
