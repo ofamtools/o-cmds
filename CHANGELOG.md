@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.3.0 (2026-11-08)
 
 - Changed, breaking (LX8c, lexicon, one shot: no old-name aliases; every rename is in `docs/lexicon-renames-v0.105.tsv`): requires ochazuke v0.105.0. One word has one part of speech. There is no stored `state` field, so no data migration; the on-disk `runs/` directory is unchanged.
   - The noun `run` is `job` (a recorded execution): `o-cmds job list|get|show|out|err|in|rerun|delete`, MCP `cmd.job ...`, the picker `job`, the `--job` argument (was `--run`), MCP tools `job_list` and `job_show`. `run` is only a verb (`cmd run NAME`). `cmd runs` is `cmd jobs` and `cmd runs-clear` is `cmd jobs-clear` (relations of a command); `cmd run-view` is the argument `show` of `run` (`cmd run NAME --show`; Enter binds `cmd.run {show: true}`; `cmd.run` is no longer flagged foreground in the catalog, so a host captures its output, while the standalone page and the CLI still stream to the terminal).
