@@ -162,6 +162,7 @@ func newApp(s *Store, in io.Reader, out, errOut io.Writer) (*App, error) {
 	a.r.DefineGuard("stdin-ui", func(r *ochazuke.Runtime, _ ochazuke.KeyEvent) bool { return r.Settings().Bool("view.stdin") })
 	a.r.DefineGuard("history-ui", func(r *ochazuke.Runtime, _ ochazuke.KeyEvent) bool { return r.Settings().Bool("view.runs") })
 	a.runCols = a.r.Settings().Bool("view.run-columns")
+	a.r.Define("cmd").Main() // the tool's main noun: `o-cmds add` is `cmd add`
 	a.r.Define("cmd").Columns(cmdColumns(a.runCols)...).Props(cmdStoreProps()...).Store(a.cmdStore())
 	a.r.Define("run").Columns(runColumns...).Props(runProps()...).Store(a.runStore())
 	// Every application key is a binding row. Help/footer hints read the

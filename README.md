@@ -34,10 +34,10 @@ go install ofam.dev/o-cmds@latest
 With the installed binary on PATH:
 
 ```sh
-printf 'printf "hello %%s\\n" "$1"\n' | o cmds cmd add --name hello --desc 'Say hello'
-printf 'pwd\n' | o cmds cmd add --name where --desc 'Show the current directory'
-o cmds cmd list
-o cmds cmd show hello
+printf 'printf "hello %%s\\n" "$1"\n' | o cmds add --name hello --desc 'Say hello'
+printf 'pwd\n' | o cmds add --name where --desc 'Show the current directory'
+o cmds list
+o cmds show hello
 o cmds cmd run hello -- 'Ada Lovelace'
 o cmds cmd run 2                 # names or displayed numbers: NAME|N
 o cmds                           # standalone TUI, selected on newest
@@ -83,10 +83,10 @@ o cmds cmd archive greeting      # agents hide without deleting
 o cmds cmd set greeting --props '{"@archive":false}'   # restore the retained command
 o cmds cmd path greeting         # script path
 o cmds cmd path                  # storage directory
-o cmds cmd list --filter deploy
-o cmds cmd list --json '{}'      # catalog rows, including script/metadata
-o cmds cmd list --format table   # framework table output
-o cmds cmd add --name report --script 'pwd' --tags '["work","daily"]'
+o cmds list --filter deploy
+o cmds list --json '{}'      # catalog rows, including script/metadata
+o cmds list --format table   # framework table output
+o cmds add --name report --script 'pwd' --tags '["work","daily"]'
 ```
 
 Runs use `sh SCRIPT ARG...`, with the recorded cwd if present. Otherwise they
@@ -101,8 +101,8 @@ preserved, including when the script is empty or has no trailing newline.
 `o-cmds setup` adds a managed block to the agents' instruction files
 (`${CLAUDE_CONFIG_DIR:-~/.claude}/CLAUDE.md`, `~/.codex/AGENTS.md`) between
 `<!-- o-cmds:begin -->` and `<!-- o-cmds:end -->`. It tells agents to record
-commands they give you, through mtm only: `cmds.cmd add` on the mtm MCP gateway
-or `mtm cmds cmd add` on the CLI, with self-contained scripts and no secrets or
+commands they give you, through mtm only: `cmd.cmd add` on the mtm MCP gateway
+or `mtm cmd add` on the CLI, with self-contained scripts and no secrets or
 host details. Agents never call the `o-cmds` binary; you run commands with
 `o-cmds cmd run`.
 

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Changed (LX7b, lexicon): requires ochazuke v0.103.0. The tool declares its main noun, `cmd` (`Noun.Main()`), so the reader resolves `o-cmds add`, `o-cmds list` and `o-cmds runs NAME` to `cmd add|list|runs`. New `TestLexicon` (`lexiconcheck`) over `testdata/lexiconcheck.txt`, seeded with today's violations.
+- Changed (LX7b): the "Commands for the owner (o-cmds)" setup note names the new operations: MCP `cmd.cmd add` (not `cmds.cmd add`) and the mtm CLI short forms `mtm cmd add`, `mtm cmd runs NAME`, `mtm run list|show|out|err` (not `mtm cmds cmd ...`). README examples use the short spellings.
 - Changed: requires ochazuke v0.102.0 and oden v0.3.0 (the Operations registry and three-part keys; `cmd/opname` moved the code). o-cmds declares its namespace, `cmd` (`ochazuke.DeclareNamespace`), so its keys are `cmd.cmd.<verb>` and the catalog carries `namespace: cmd`. CLI spellings are unchanged; a host that honours the declared namespace names the MCP verbs `cmd.cmd add` instead of `cmds.cmd add`.
 - Changed: the "Commands for the owner (o-cmds)" setup note now tells agents to record and read commands only through mtm (`cmds.cmd add` on the MCP gateway, `mtm cmds cmd add` on the CLI, `mtm cmds cmd runs` and `mtm cmds run ...` for what happened), never the `o-cmds` binary, and to record code and recipes as well as commands.
 - Changed: cmd and run are thing nouns with stores (cmd: list, get, set, archive; run: list, get, delete). `cmd archive` is the standard archive; `cmd delete`, `cmd list`, `cmd edit`, `run list` and `run delete` stay as named verbs.
