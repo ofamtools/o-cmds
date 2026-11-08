@@ -12,7 +12,7 @@ has not been migrated.
 | Key | Catalog verb | Host behavior |
 |---|---|---|
 | `v` | `cmd.show`, result `text` | Read-only script text viewer; standalone retains its numbered script viewer |
-| Enter | `cmd.run-show`, result `text` | Run with the shared recorder, then read captured stdout, stderr and exit status; both streams are capped by `runs.max-bytes` |
+| Enter | `cmd.run {show: true}`, result `text` | Run with the shared recorder, then read captured stdout, stderr and exit status; both streams are capped by `jobs.max-bytes` |
 | `H` | `cmd.history`, `foreground: true` | Full-screen o-cmds history with the existing picker and output preview; closing its last modal returns to the host |
 | `e` | `cmd.edit`, `foreground: true` | `$VISUAL`/`$EDITOR` receives a real terminal, including stdin |
 | `g e` | `cmd.edit-stdin`, `foreground: true` | Editor and script run receive the terminal |
@@ -27,7 +27,7 @@ stdout, stderr and metadata as text. No dual-form result protocol is needed.
 `keys.text-results` (ochazuke, default `true`) controls automatic text viewers
 on key runs. `palette.text-results=plain` disables text viewers in both paths;
 `all` broadens only palette results, never ordinary key answers.
-`view.runs` still controls history, and `view.stdin` its stdin actions.
+`view.jobs` still controls history, and `view.stdin` its stdin actions.
 A failed script's captured output and exit status are readable; a process
 start or storage failure is reported as an error. Captured host execution has
 mtm's 60-second deadline. Foreground history and editor sessions have no

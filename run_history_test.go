@@ -110,7 +110,7 @@ func TestRunHistoryTruncationRetentionOffAndUndo(t *testing.T) {
 	s := fixture(t)
 	c := addCommand(t, s, "capture", "printf abcdef; printf uvwxyz >&2")
 	a, out, errOut := historyApp(t, s)
-	for name, value := range map[string]int{"runs.keep": 2, "runs.max-bytes": 3} {
+	for name, value := range map[string]int{"jobs.keep": 2, "jobs.max-bytes": 3} {
 		if e := a.r.Settings().Set(name, value); e != nil {
 			t.Fatal(e)
 		}
@@ -148,7 +148,7 @@ func TestRunHistoryTruncationRetentionOffAndUndo(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatal("undo lost runs")
 	}
-	if e := a.r.Settings().Set("runs.keep", 0); e != nil {
+	if e := a.r.Settings().Set("jobs.keep", 0); e != nil {
 		t.Fatal(e)
 	}
 	if e := dispatch(a, []string{"cmd", "run", c.Name}); e != nil {
@@ -168,10 +168,10 @@ func TestRunHistoryTruncationRetentionOffAndUndo(t *testing.T) {
 	if len(rows) != 0 {
 		t.Fatal("keep=0 recorded")
 	}
-	if e := a.r.Settings().Set("runs.keep", -1); e == nil {
+	if e := a.r.Settings().Set("jobs.keep", -1); e == nil {
 		t.Fatal("accepted negative retention")
 	}
-	if e := a.r.Settings().Set("runs.max-bytes", -1); e == nil {
+	if e := a.r.Settings().Set("jobs.max-bytes", -1); e == nil {
 		t.Fatal("accepted negative cap")
 	}
 }
@@ -321,7 +321,7 @@ func TestRunHistoryBinaryAndZeroCap(t *testing.T) {
 		}
 	}
 	a, out, errOut := historyApp(t, s)
-	if e := a.r.Settings().Set("runs.max-bytes", 0); e != nil {
+	if e := a.r.Settings().Set("jobs.max-bytes", 0); e != nil {
 		t.Fatal(e)
 	}
 	if e := dispatch(a, []string{"cmd", "run", c.Name}); e != nil {
@@ -377,7 +377,7 @@ func TestRunHistoryActiveClearAndConcurrentCompletion(t *testing.T) {
 		t.Fatal("completion resurrected cleared run")
 	}
 	// Concurrent completions share the process lock and enforce the same cap.
-	if e := a.r.Settings().Set("runs.keep", 2); e != nil {
+	if e := a.r.Settings().Set("jobs.keep", 2); e != nil {
 		t.Fatal(e)
 	}
 	finishes := []func(error) error{}
@@ -441,5 +441,20 @@ func TestRunHistoryBoundedPTYDrain(t *testing.T) {
 	r, e := s.ReadRun("1")
 	if e != nil || r.Stdout != "ready" || !strings.Contains(r.CaptureError, "timed out") {
 		t.Fatalf("drain %+v %v", r, e)
+	}
+}
+
+// cmd run NAME --show captures both streams and reads them, as Enter does
+// in a host; without it the script streams to the terminal.
+func TestRunShowArgumentCapturesAndReads(t *testing.T) {
+	s := fixture(t)
+	addCommand(t, s, "shown", "echo out-text; echo err-text >&2")
+	out, e := invoke(t, s, "", "cmd", "run", "shown", "--show")
+	if e != nil || !strings.Contains(out, "--- stdout ---") || !strings.Contains(out, "out-text") || !strings.Contains(out, "err-text") {
+		t.Fatalf("show=%q %v", out, e)
+	}
+	out, e = invoke(t, s, "", "cmd", "run", "shown")
+	if e != nil || strings.Contains(out, "--- stdout ---") || !strings.Contains(out, "out-text") {
+		t.Fatalf("stream=%q %v", out, e)
 	}
 }

@@ -46,7 +46,7 @@ func TestRunStateDerivation(t *testing.T) {
 	}
 }
 
-// The count is durable: runs.keep 0 records no runs, yet each run counts,
+// The count is durable: jobs.keep 0 records no runs, yet each run counts,
 // and a legacy command starts from its retained records.
 func TestRunCountSurvivesKeepAndPruning(t *testing.T) {
 	s := fixture(t)
@@ -55,7 +55,7 @@ func TestRunCountSurvivesKeepAndPruning(t *testing.T) {
 	seedRun(t, s, legacy, "old-1", s.now().Add(-time.Hour))
 	a, _, _ := historyApp(t, s)
 	a.run = func(cmd *exec.Cmd) error { return nil }
-	if e := a.r.Settings().Set("runs.keep", 0); e != nil {
+	if e := a.r.Settings().Set("jobs.keep", 0); e != nil {
 		t.Fatal(e)
 	}
 	for _, row := range []Command{c, c, legacy} {
@@ -233,8 +233,8 @@ func TestHostRowsCarryRunStateAndTone(t *testing.T) {
 			t.Fatalf("run cells ran=%v fresh=%v", got["ran"].Cells, got["fresh"].Cells)
 		}
 	}
-	// view.run-columns off drops the two columns and their cells.
-	writeSettings(t, map[string]any{"view.run-columns": false})
+	// view.job-columns off drops the two columns and their cells.
+	writeSettings(t, map[string]any{"view.job-columns": false})
 	a, _, _ := historyApp(t, s)
 	if cols := a.r.Nouns["cmd"].Columns; len(cols) != 5 {
 		t.Fatalf("columns without run columns %v", cols)

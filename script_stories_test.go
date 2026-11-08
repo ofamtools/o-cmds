@@ -117,7 +117,7 @@ func TestScriptStories(t *testing.T) {
 					t.Fatal(e)
 				}
 			}
-			// Settings read at start (view.run-columns) come from the
+			// Settings read at start (view.job-columns) come from the
 			// settings file, as they do for the owner.
 			if len(story.Settings) > 0 {
 				writeSettings(t, story.Settings)

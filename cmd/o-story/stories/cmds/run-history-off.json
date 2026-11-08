@@ -2,7 +2,7 @@
   "name": "run history UI can be disabled without changing script view",
   "commands": [{"name": "quiet-command", "script": "printf quiet\n"}],
   "runs": [{"command": "quiet-command", "stdout": "recorded", "exitCode": 0}],
-  "settings": {"view.runs": false},
+  "settings": {"view.jobs": false},
   "script": ["H", "v", "esc"],
   "expect": [
     {"after": 0, "lacks": ["Last run:"]},

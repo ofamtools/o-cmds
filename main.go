@@ -191,6 +191,40 @@ func (a *App) verbCLI(sh *ocli.Shell, v verbSpec, args []string) error {
 	return e
 }
 
+// wantsShow reports whether a cmd run line asks to capture and read the
+// output: --show, or show:true in a host's --json arguments. Words after --
+// belong to the script.
+func wantsShow(args []string) bool {
+	for i, arg := range args {
+		raw, isJSON := strings.CutPrefix(arg, "--json=")
+		switch {
+		case arg == "--":
+			return false
+		case arg == "--show":
+			return true
+		case arg == "--json" && i+1 < len(args):
+			raw, isJSON = args[i+1], true
+		}
+		var host struct {
+			Show bool `json:"show"`
+		}
+		if isJSON && json.Unmarshal([]byte(raw), &host) == nil && host.Show {
+			return true
+		}
+	}
+	return false
+}
+
+// runLeaf is the cmd run leaf: a line that asks to show captures and reads
+// the output through the shared verb path, else the script's stream is
+// owned by runCLI.
+func (a *App) runLeaf(ctx context.Context, args []string) error {
+	if wantsShow(args) {
+		return a.shell().Run(ctx, append([]string{"cmd", "run"}, args...))
+	}
+	return a.runCLI(ctx, args)
+}
+
 // This leaf owns a stream rather than a JSON answer: never append a framework
 // result to the script's bytes, and pass an ExitError through to oden.Report.
 func (a *App) runCLI(ctx context.Context, args []string) error {

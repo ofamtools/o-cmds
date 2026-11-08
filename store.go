@@ -32,7 +32,7 @@ type Command struct {
 	Pinned      bool      `json:"pinned"`
 	Deleted     bool      `json:"deleted,omitempty"`
 	Path        string    `json:"path"`
-	// RunsTotal counts every run ever started, independent of runs.keep;
+	// RunsTotal counts every run ever started, independent of jobs.keep;
 	// undo never rolls it back. Nil (metadata from before the counter)
 	// counts the retained run records instead (runCount).
 	RunsTotal *int       `json:"runs_total,omitempty"`
@@ -476,7 +476,7 @@ func (s *Store) stored(id string) (c Command, ok bool) {
 }
 
 // CountRun records that a run of the command started: the durable total
-// and last-run time, kept whatever runs.keep retains. It writes no undo
+// and last-run time, kept whatever jobs.keep retains. It writes no undo
 // snapshot; a command still without a total starts from its retained runs.
 func (s *Store) CountRun(id string, at time.Time) error {
 	return s.locked(func() error {

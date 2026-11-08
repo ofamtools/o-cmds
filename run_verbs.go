@@ -110,7 +110,7 @@ func (a *App) commandRuns(_ ochazuke.Ctx, c Command) ochazuke.Result {
 		return ochazuke.Failed(e)
 	}
 	if a.tui {
-		if !a.r.Settings().Bool("view.runs") {
+		if !a.r.Settings().Bool("view.jobs") {
 			return ochazuke.Done(nil)
 		}
 		choices := make([]ochazuke.PickerRow, 0, len(rows))
@@ -166,8 +166,8 @@ func (a *App) rerun(_ ochazuke.Ctx, r RunOutput) ochazuke.Result {
 }
 
 func (a *App) rerunLast(c ochazuke.Ctx, row Command) ochazuke.Result {
-	if a.tui && !a.r.Settings().Bool("view.runs") {
-		return ochazuke.Failed(errors.New("history UI disabled by view.runs"))
+	if a.tui && !a.r.Settings().Bool("view.jobs") {
+		return ochazuke.Failed(errors.New("history UI disabled by view.jobs"))
 	}
 	rows, err := a.store.Runs(row.ID)
 	if err != nil {

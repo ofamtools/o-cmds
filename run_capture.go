@@ -157,14 +157,14 @@ func (s *captureStream) close() error {
 // prepareRun is shared by CLI and foreground/catalog execution. The returned
 // completion must run after Cmd.Run/Wait, including start failures.
 func (a *App) prepareRun(cmd *exec.Cmd, c Command, args []string, source string, inputs ...*runInput) (func(error) error, error) {
-	// The durable count goes up whatever runs.keep retains. Counting never
+	// The durable count goes up whatever jobs.keep retains. Counting never
 	// blocks a run: its error is reported with the run's completion.
 	countErr := a.store.CountRun(c.ID, time.Now())
 	if countErr != nil {
 		countErr = fmt.Errorf("count run: %w", countErr)
 	}
 	a.refresh()
-	keep := a.r.Settings().Int("runs.keep")
+	keep := a.r.Settings().Int("jobs.keep")
 	if keep == 0 {
 		return func(error) error { return countErr }, nil
 	}
@@ -204,7 +204,7 @@ func (a *App) prepareRun(cmd *exec.Cmd, c Command, args []string, source string,
 	}); err != nil {
 		return nil, err
 	}
-	limit := a.r.Settings().Int("runs.max-bytes")
+	limit := a.r.Settings().Int("jobs.max-bytes")
 	mu := &sync.Mutex{}
 	out, err := newCaptureStream(a.out, limit, mu)
 	if err != nil {

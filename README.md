@@ -144,7 +144,7 @@ the picker/editor binding hints and disables those TUI flows; CLI access remains
 reopens the same absolute path (so it sees current file contents), while edited
 input reuses the run's retained buffer. A missing source fails clearly. A
 truncated edited buffer cannot be rerun, since its original bytes are no longer
-available. `view.runs=false` also hides and disables the `g r` history action.
+available. `view.jobs=false` also hides and disables the `g r` history action.
 The catalog's `cmd.run` supports `stdin`, `edit-stdin`, and `stdin-kind`
 (`file` by default; `edited` snapshots an existing buffer for reuse).
 
@@ -170,7 +170,7 @@ tone travels on the catalog rows, so mtm's Commands tab shows it too.
 
 Each row carries `status` (`new`, `ran` or `dismissed`), `runs` (runs since the
 last reset), `last_run_at` and `last_run_age`; every row field is a prop filter
-in ochazuke, so `z /` can filter `status = new`. With `view.run-columns`
+in ochazuke, so `z /` can filter `status = new`. With `view.job-columns`
 (default on, read at start) the table reads `# Name Description Last Age Runs
 Author`: `Runs` is second from the right, before `Author`, and is the last of
 the optional columns to drop, so at 120 columns with the script pane open the
@@ -178,7 +178,7 @@ list shows `# Name Description Runs`. Narrower lists drop `Last`, then `Age`,
 then `Author`.
 
 The count is durable: each started run adds one to a counter in the command's
-metadata, whatever `runs.keep` retains or prunes, and undo never lowers it.
+metadata, whatever `jobs.keep` retains or prunes, and undo never lowers it.
 Commands recorded before the counter count their retained run records.
 
 ```sh
@@ -235,12 +235,12 @@ The `stdin` metadata object records `kind` (`none`, `file`, `edited`), source
 `path`, full `bytes` and SHA-256 `sha`, plus `kept` and `truncated`. These describe
 the source when execution is prepared, even if the script reads only part of it.
 Inherited input is never copied. Explicit file and editor inputs retain a prefix
-under the same `runs.max-bytes` cap as output; `.in` files are deleted with their
+under the same `jobs.max-bytes` cap as output; `.in` files are deleted with their
 run by retention, deletion or clearing. Edited paths point to that private kept
 file. `job get --prop output` labels retained stdin and includes the metadata; `job in` prints
 the exact retained bytes, including binary input. JSON includes `input` and,
 when needed, `input_base64`; MCP `job_show` includes input text/base64 only up to
-64 KiB, always keeping source metadata. `runs.keep=0` saves no input history.
+64 KiB, always keeping source metadata. `jobs.keep=0` saves no input history.
 
 Records include the command ID and name at execution, SHA-256 script hash,
 arguments, effective cwd, UTC start/end, duration, exit code or signal, runner's
@@ -261,7 +261,7 @@ bypass capture. There is no combined cross-stream ordering guarantee. A
 background descendant retaining an output descriptor gets a bounded drain
 (one second per PTY; one second for exec's pipe drain); `capture_error` or the
 run's error marks an incomplete drain. Ordinary interactive input and colours
-continue to work. `runs.keep=0` restores direct output without recording.
+continue to work. `jobs.keep=0` restores direct output without recording.
 
 History lives in `runs/<command-id>/<run-id>.json`, `.out`, `.err`, and optional
 `.in` files under
@@ -273,13 +273,13 @@ Command deletion retains runs, matching retained scripts and undo; run deletion
 and `runs-clear` permanently remove history and are not command undo operations.
 Clearing a running record prevents completion from recreating it.
 
-Defaults are `runs.keep=20` completed runs per command, `runs.max-bytes=1048576`
-per stream, `view.runs=true`, and `view.stdin=true`. Retention applies on
+Defaults are `jobs.keep=20` completed runs per command, `jobs.max-bytes=1048576`
+per stream, `view.jobs=true`, and `view.stdin=true`. Retention applies on
 completion; active and
 unfinished records are kept. A cap keeps the beginning of each stream while
 continuing to count and forward every byte. Zero cap retains metadata only.
-`runs.keep=0` disables future recording, retaining existing records. The settings
-are nonnegative integers. `view.runs=false` hides the last-run status and disables
+`jobs.keep=0` disables future recording, retaining existing records. The settings
+are nonnegative integers. `view.jobs=false` hides the last-run status and disables
 the history modal without disabling recording or CLI access.
 
 The command preview shows the latest run's status, time and duration. `H` opens
@@ -291,7 +291,7 @@ restores closing the list when a run opens. The backdrop selects that command.
 
 In mtm, `H` runs `cmd.history` as a foreground full-screen session and closing
 it returns to the host. `v` uses `cmd.show` (declared text), and Enter uses
-`cmd.run-show` to open captured stdout, stderr and exit status in the host's
+`cmd.run {show: true}` (`cmd run NAME --show`) to open captured stdout, stderr and exit status in the host's
 read-only viewer. `keys.text-results=false` disables automatic key-result
 viewers. Standalone Enter keeps its streaming terminal handoff through
 `cmd.run`; that verb, `cmd.edit` and `cmd.edit-stdin` publish `foreground: true`
@@ -304,7 +304,7 @@ keeps its existing stdin picker and streaming execution. `cmd.rerun` (`g r`)
 and `job.rerun` declare foreground execution, preserving original args, cwd
 and stdin while allowing interactive reruns.
 
-`cmd.run-show` and `cmd.run-file` publish a shared per-row `run` slot and a
+`cmd.run` (with `show`) and `cmd.run-file` publish a shared per-row `run` slot and a
 15-minute captured limit. Pressing Enter twice while a run is active starts
 only one run. The host can cancel it through `ochazuke.job.cancel`; a limit or
 cancellation stops the process group and lets the recorder close its record.
@@ -314,7 +314,7 @@ The host uses that title unless `text-view.result-title=false`.
 Foreground failures retain the last stderr line and, by default, wait for a
 key before resuming. The host's `foreground.hold=off` disables that wait.
 Leaving an edited stdin buffer empty is a plain cancellation and runs no
-script. `view.runs=false` and `view.stdin=false` publish disabled catalog verbs
+script. `view.jobs=false` and `view.stdin=false` publish disabled catalog verbs
 for their corresponding UI actions. Refresh the host catalog after changing
 these settings.
 

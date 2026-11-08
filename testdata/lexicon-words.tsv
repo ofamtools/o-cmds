@@ -907,5 +907,4 @@ zoom-in	action	seed
 zoom-out	action	seed	
 zoom-reset	action	seed	
 jobs-clear	action	yes	clears a command's jobs
-run-show	action	yes	runs a command with the shared recorder and reads the captured streams
 script-viewer	noun	yes	o-cmds script viewer noun

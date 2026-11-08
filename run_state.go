@@ -10,7 +10,7 @@ import (
 
 // A command's run state: how often it ran since its last reset and whether
 // the owner has seen it. It derives from the durable counter on the command
-// (Command.RunsTotal), which runs.keep pruning never lowers, falling back to
+// (Command.RunsTotal), which jobs.keep pruning never lowers, falling back to
 // the retained run records for metadata written before the counter.
 const (
 	statusNew       = "new"       // never run and not dismissed

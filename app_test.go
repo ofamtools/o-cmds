@@ -220,7 +220,7 @@ func TestCatalogAndStandalonePage(t *testing.T) {
 		}
 	}
 	for key, want := range map[string]string{
-		"enter": "cmd.run-show", "v": "cmd.show", "H": "cmd.history",
+		"enter": "cmd.run", "v": "cmd.show", "H": "cmd.history",
 		"y": "cmd.yank", "e": "cmd.edit", "d d": "cmd.delete",
 	} {
 		if got := keys[key]; got != want {

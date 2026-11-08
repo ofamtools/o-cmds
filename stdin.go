@@ -59,7 +59,7 @@ func (a *App) openInput(path, kind string) (*runInput, error) {
 		return fail(errors.New("stdin must be a regular file"))
 	}
 	h := sha256.New()
-	kept := cappedStream{limit: a.r.Settings().Int("runs.max-bytes")}
+	kept := cappedStream{limit: a.r.Settings().Int("jobs.max-bytes")}
 	n, err := io.Copy(io.MultiWriter(h, &kept), f)
 	if err != nil {
 		return fail(err)
@@ -78,7 +78,7 @@ func (a *App) inputForRun(r Run) (*runInput, error) {
 		return a.openInput(r.Stdin.Path, "file")
 	case "edited":
 		if r.Stdin.Truncated {
-			return nil, errors.New("cannot rerun: edited stdin was truncated by runs.max-bytes")
+			return nil, errors.New("cannot rerun: edited stdin was truncated by jobs.max-bytes")
 		}
 		return a.openInput(a.store.runPath(r, ".in"), "edited")
 	default:

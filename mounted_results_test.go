@@ -224,10 +224,10 @@ func TestRunViewFailureWithoutRetention(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := a.r.Settings().Set("runs.keep", 0); err != nil {
+	if err := a.r.Settings().Set("jobs.keep", 0); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.shell().Run(context.Background(), []string{"cmd", "run-show", "failed"}); err != nil {
+	if err := a.shell().Run(context.Background(), []string{"cmd", "run", "failed", "--show"}); err != nil {
 		t.Fatal(err)
 	}
 	var text ochazuke.TextAnswer

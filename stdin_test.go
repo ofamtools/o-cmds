@@ -159,10 +159,10 @@ func TestStdinRetentionCapOffAndInherited(t *testing.T) {
 	c := addCommand(t, s, "caps", "cat")
 	a, out, _ := historyApp(t, s)
 	t.Setenv("VISUAL", `sh -c 'printf abcdef > "$1"' fake-editor`)
-	if err := a.r.Settings().Set("runs.max-bytes", 3); err != nil {
+	if err := a.r.Settings().Set("jobs.max-bytes", 3); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.r.Settings().Set("runs.keep", 1); err != nil {
+	if err := a.r.Settings().Set("jobs.keep", 1); err != nil {
 		t.Fatal(err)
 	}
 	if err := dispatch(a, []string{"cmd", "run", c.Name, "--edit-stdin"}); err != nil {
@@ -186,7 +186,7 @@ func TestStdinRetentionCapOffAndInherited(t *testing.T) {
 	if err != nil || latest.Stdin.Kind != "none" || latest.Input != "" || latest.Stdout != "inp" {
 		t.Fatalf("inherited %+v %v", latest, err)
 	}
-	if err := a.r.Settings().Set("runs.keep", 0); err != nil {
+	if err := a.r.Settings().Set("jobs.keep", 0); err != nil {
 		t.Fatal(err)
 	}
 	out.Reset()
@@ -282,7 +282,7 @@ func TestStdinLatestRerunAndBindings(t *testing.T) {
 	if keys()["g i"] != 0 || keys()["g e"] != 0 {
 		t.Fatal("disabled stdin hints still visible", keys())
 	}
-	if err := a.r.Settings().Set("view.runs", false); err != nil {
+	if err := a.r.Settings().Set("view.jobs", false); err != nil {
 		t.Fatal(err)
 	}
 	if keys()["g r"] != 0 {

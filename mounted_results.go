@@ -20,6 +20,15 @@ func (a *App) view(c ochazuke.Ctx, row Command) ochazuke.Result {
 	return result(text, err)
 }
 
+// runOrShow is cmd.run: with show it captures both streams for reading
+// (runView), else it streams to the terminal (execute).
+func (a *App) runOrShow(c ochazuke.Ctx, row Command) ochazuke.Result {
+	if show, _ := c.Args["show"].(bool); show {
+		return a.runView(c, row)
+	}
+	return a.execute(c, row)
+}
+
 // runView uses the same recorder as cmd.run but captures both streams for
 // reading rather than handing the terminal to the script. Even a failed
 // script has output worth reading. Storage/start failures remain errors.
@@ -29,7 +38,7 @@ func (a *App) runView(c ochazuke.Ctx, row Command) ochazuke.Result {
 		return ochazuke.Failed(err)
 	}
 	args := stringList(c.Args["args"])
-	limit := a.r.Settings().Int("runs.max-bytes")
+	limit := a.r.Settings().Int("jobs.max-bytes")
 	out, errOut := &cappedStream{limit: limit}, &cappedStream{limit: limit}
 	recorder := *a
 	recorder.out, recorder.errOut = out, errOut
@@ -88,7 +97,7 @@ func (a *App) historyCLI(_ context.Context, words []string) error {
 	if err != nil {
 		return err
 	}
-	if !a.r.Settings().Bool("view.runs") {
+	if !a.r.Settings().Bool("view.jobs") {
 		return nil
 	}
 	p, err := mountPage(a)
