@@ -119,12 +119,17 @@ func TestCLIAddListShowRenameDeleteUndo(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	out, e = invoke(t, s, "", "cmd", "copy", "renamed")
+	t.Setenv("O_CMDS_CLIPBOARD", "cat >/dev/null")
+	out, e = invoke(t, s, "", "cmd", "yank", "renamed")
 	if e != nil || out != "printf 'old\\n'\n" {
-		t.Fatalf("copy=%q %v", out, e)
+		t.Fatalf("yank=%q %v", out, e)
 	}
-	out, e = invoke(t, s, "", "cmd", "path", "renamed")
-	if e != nil || strings.TrimSpace(out) != first.Path {
+	out, e = invoke(t, s, "", "cmd", "get", "renamed", "--prop", "script_path")
+	if e != nil || strings.Trim(strings.TrimSpace(out), `"`) != first.Path {
+		t.Fatalf("script_path=%q %v", out, e)
+	}
+	out, e = invoke(t, s, "", "cmd", "path")
+	if e != nil || strings.Trim(strings.TrimSpace(out), `"`) != s.Dir {
 		t.Fatalf("path=%q %v", out, e)
 	}
 }
@@ -215,8 +220,8 @@ func TestCatalogAndStandalonePage(t *testing.T) {
 		}
 	}
 	for key, want := range map[string]string{
-		"enter": "cmd.run-view", "v": "cmd.view", "H": "cmd.history",
-		"y": "cmd.copy", "e": "cmd.edit", "d d": "cmd.delete",
+		"enter": "cmd.run-show", "v": "cmd.show", "H": "cmd.history",
+		"y": "cmd.yank", "e": "cmd.edit", "d d": "cmd.delete",
 	} {
 		if got := keys[key]; got != want {
 			t.Errorf("published binding %s = %s, want %s", key, got, want)
@@ -368,7 +373,7 @@ func TestEditAndClipboardUseInjectedRunner(t *testing.T) {
 		}
 		return nil
 	}
-	if e = dispatch(a, []string{"cmd", "copy", c.Name, "--yank"}); e != nil {
+	if e = dispatch(a, []string{"cmd", "yank", c.Name}); e != nil {
 		t.Fatal(e)
 	}
 	a.run = func(cmd *exec.Cmd) error {

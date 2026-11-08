@@ -70,8 +70,8 @@ extension; they are not implemented by a separate app matcher.
 
 ```sh
 o cmds cmd show 1
-o cmds cmd copy hello            # print the exact script bytes
-o cmds cmd copy hello --yank     # also copy to the clipboard
+o cmds cmd show hello            # print the script
+o cmds cmd yank hello            # copy the script to the clipboard (and print it)
 EDITOR='code --wait' o cmds cmd edit hello
 o cmds cmd set hello --props '{"@label":"greeting"}'   # rename
 o cmds cmd pin greeting          # show a star, keep chronological position
@@ -81,8 +81,8 @@ o cmds cmd delete greeting       # hide; keep script and history
 o cmds cmd undo                  # restore the most recent change
 o cmds cmd archive greeting      # agents hide without deleting
 o cmds cmd set greeting --props '{"@archive":false}'   # restore the retained command
-o cmds cmd path greeting         # script path
-o cmds cmd path                  # storage directory
+o cmds cmd get greeting --prop script_path   # script path
+o cmds cmd path                  # storage directory (a collection prop)
 o cmds list --filter deploy
 o cmds list --json '{}'      # catalog rows, including script/metadata
 o cmds list --format table   # framework table output
@@ -108,7 +108,7 @@ host details. Agents never call the `o-cmds` binary; you run commands with
 
 ```sh
 o cmds setup                  # status
-o cmds setup plan             # dry run
+o cmds setup install --dry-run   # dry run
 o cmds setup install --yes
 o cmds setup uninstall --yes
 ```
@@ -125,7 +125,7 @@ mtm's Extensions page shows `setup` for o-cmds through the shared catalog noun.
 o cmds cmd run hello --stdin ./input.txt -- argument
 o cmds cmd run hello --edit-stdin -- argument
 o cmds cmd rerun hello             # latest run, including its input source
-o cmds run in 1                    # exact retained input bytes
+o cmds job in 1                    # exact retained input bytes
 ```
 
 On a command row, `g i` opens ochazuke's file picker at the caller's current
@@ -140,7 +140,7 @@ always start empty; automatic seeding is not enabled. `view.stdin=false` hides
 the picker/editor binding hints and disables those TUI flows; CLI access remains.
 
 `g r` repeats the focused command's latest recorded run. Both that action and
-`run rerun RUN` reuse the original arguments, cwd and stdin source: file input
+`job rerun JOB` reuse the original arguments, cwd and stdin source: file input
 reopens the same absolute path (so it sees current file contents), while edited
 input reuses the run's retained buffer. A missing source fails clearly. A
 truncated edited buffer cannot be rerun, since its original bytes are no longer
@@ -189,16 +189,16 @@ o cmds cmd undo                  # u: restores either
 ```
 
 `x`, `X` and `R` act on every row of a `V` selection as one undo step. `reset`
-only resets the counter: retained run records stay (`cmd runs-clear` deletes
+only resets the counter: retained run records stay (`cmd jobs-clear` deletes
 them), and undoing a reset restores the old count plus any runs since.
 
 Agents may read and write, including `cmd.reset`; an allowed agent call passes
 its confirmation prompt. `cmd.delete` is declared agent-never even though it
 only hides. Use `cmd.archive` and `cmd.set` with `@archive` false, which share the retained flag
-handler. `run.delete` and `cmd.runs-clear` are destructive and agent-never
+handler. `job.delete` and `cmd.jobs-clear` are destructive and agent-never
 because they remove captured streams. Owner `agents.rights` rules still apply.
 
-`list.hide-archived` defaults to true; false includes archived command rows.
+`collection.hide-archived` defaults to true; false includes archived command rows.
 Archived rows have `-` in the number column, leaving live positional numbers
 unchanged. Target archived commands by name or stable ID. Archive and restore
 are repeatable and undoable. Restore adds a suffix if the name is occupied.
@@ -212,22 +212,22 @@ be captured by o-cmds**. Shell command history and captured run history are
 separate things.
 
 ```sh
-o cmds cmd runs hello             # command name, abbreviation or number
-o cmds run list                   # all runs, including deleted commands
-o cmds run show 1                 # metadata and labelled stdin/stdout/stderr
-o cmds run out 1                  # exact captured stdout, for piping
-o cmds run err 1                  # exact captured stderr, for piping
-o cmds run rerun 1                # current script, original args, cwd and input
-o cmds run delete 1               # remove record and captured streams
-o cmds cmd runs-clear hello       # remove all of this command's runs
+o cmds cmd jobs hello             # command name, abbreviation or number
+o cmds job list                   # all jobs (runs), including deleted commands
+o cmds job get 1 --prop output    # metadata and labelled stdin/stdout/stderr
+o cmds job out 1                  # exact captured stdout, for piping
+o cmds job err 1                  # exact captured stderr, for piping
+o cmds job rerun 1                # current script, original args, cwd and input
+o cmds job delete 1               # remove record and captured streams
+o cmds cmd jobs-clear hello       # remove all of this command's jobs
 ```
 
 Runs list oldest first, newest at the bottom, independently of `list.order`.
 Their numbers refer to the global run list, including when filtered by command;
 numbers change after pruning/deletion. A stable `run/ID`, exact ID or unique ID
 prefix also works. Ambiguous prefixes fail without executing anything.
-`run list NAME|N` filters by command; `run show/in/out/err/delete/rerun` accept
-`--run RUN` as well as a positional target. Machine clients can use `--json`.
+`job list NAME|N` filters by command; `job show/in/out/err/delete/rerun` accept
+`--job JOB` as well as a positional target. Machine clients can use `--json`.
 `rerun` requires the retained command and its script to exist. It uses the
 current script and records its current hash rather than restoring old code.
 
@@ -237,9 +237,9 @@ the source when execution is prepared, even if the script reads only part of it.
 Inherited input is never copied. Explicit file and editor inputs retain a prefix
 under the same `runs.max-bytes` cap as output; `.in` files are deleted with their
 run by retention, deletion or clearing. Edited paths point to that private kept
-file. `run show` labels retained stdin and includes the metadata; `run in` prints
+file. `job get --prop output` labels retained stdin and includes the metadata; `job in` prints
 the exact retained bytes, including binary input. JSON includes `input` and,
-when needed, `input_base64`; MCP `run_show` includes input text/base64 only up to
+when needed, `input_base64`; MCP `job_show` includes input text/base64 only up to
 64 KiB, always keeping source metadata. `runs.keep=0` saves no input history.
 
 Records include the command ID and name at execution, SHA-256 script hash,
@@ -248,7 +248,7 @@ author/harness stamp, CLI/TUI source, observed and retained byte counts, and
 separate truncation flags. Start failures have an error and no exit code.
 An interrupted recorder leaves an unfinished record; its in-memory output
 cannot be recovered after a hard kill. Streams become available at completion.
-`run show --json '{}'` and MCP return readable stream text; a binary stream
+`job get --prop output --json '{}'` and MCP return readable stream text; a binary stream
 also has `stdout_base64` or `stderr_base64` to preserve invalid UTF-8 exactly.
 
 Each terminal output stream gets its own output PTY; redirected output uses
@@ -290,20 +290,21 @@ run list, then another Escape returns to the host. `history.keep-open=false`
 restores closing the list when a run opens. The backdrop selects that command.
 
 In mtm, `H` runs `cmd.history` as a foreground full-screen session and closing
-it returns to the host. `v` uses `cmd.view` (declared text), and Enter uses
-`cmd.run-view` to open captured stdout, stderr and exit status in the host's
+it returns to the host. `v` uses `cmd.show` (declared text), and Enter uses
+`cmd.run-show` to open captured stdout, stderr and exit status in the host's
 read-only viewer. `keys.text-results=false` disables automatic key-result
 viewers. Standalone Enter keeps its streaming terminal handoff through
 `cmd.run`; that verb, `cmd.edit` and `cmd.edit-stdin` publish `foreground: true`
-for hosts. `cmd.show` and `run.show` keep structured MCP/CLI answers, while
-`run.view` returns labelled text. See [Family integration](docs/INTEGRATION.md).
+for hosts. `cmd.get` and `job.get` keep the structured answers (the script is the computed
+prop `script`, a job's labelled streams the computed prop `output`), while
+`job.show` returns labelled text. See [Family integration](docs/INTEGRATION.md).
 Hosted `g i` uses `cmd.run-file` with a required stdin path, so the host opens
 its shared file picker before showing the captured run. Standalone `g i`
 keeps its existing stdin picker and streaming execution. `cmd.rerun` (`g r`)
-and `run.rerun` declare foreground execution, preserving original args, cwd
+and `job.rerun` declare foreground execution, preserving original args, cwd
 and stdin while allowing interactive reruns.
 
-`cmd.run-view` and `cmd.run-file` publish a shared per-row `run` slot and a
+`cmd.run-show` and `cmd.run-file` publish a shared per-row `run` slot and a
 15-minute captured limit. Pressing Enter twice while a run is active starts
 only one run. The host can cancel it through `ochazuke.job.cancel`; a limit or
 cancellation stops the process group and lets the recorder close its record.

@@ -35,30 +35,30 @@ func TestStdinFileHistoryAndRerun(t *testing.T) {
 	if err != nil || r.Stdin.Kind != "file" || r.Stdin.Path != path || r.Stdin.Bytes != int64(len(text)) || r.Stdin.SHA != fmt.Sprintf("%x", sha256.Sum256([]byte(text))) || r.Input != text || r.InputBase64 == "" {
 		t.Fatalf("history %+v %v", r, err)
 	}
-	got, err := invoke(t, s, "", "run", "in", "1")
+	got, err := invoke(t, s, "", "job", "in", "1")
 	if err != nil || got != text {
 		t.Fatalf("raw %q %v", got, err)
 	}
 	if err := os.WriteFile(path, []byte("changed"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got, err = invoke(t, s, "inherited", "run", "rerun", "1")
+	got, err = invoke(t, s, "inherited", "job", "rerun", "1")
 	if err != nil || got != "arg:changed" {
 		t.Fatalf("file rerun %q %v", got, err)
 	}
 	// History's raw input remains the original bytes after the source changes.
-	got, err = invoke(t, s, "", "run", "in", "1")
+	got, err = invoke(t, s, "", "job", "in", "1")
 	if err != nil || got != text {
 		t.Fatalf("snapshot changed %q %v", got, err)
 	}
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = invoke(t, s, "", "run", "rerun", "1"); err == nil {
+	if _, err = invoke(t, s, "", "job", "rerun", "1"); err == nil {
 		t.Fatal("missing original file silently used inherited stdin")
 	}
 	a, _, _ := historyApp(t, s)
-	b, _ := json.Marshal(a.callTool("run_show", json.RawMessage(`{"run":"1"}`), "test"))
+	b, _ := json.Marshal(a.callTool("job_show", json.RawMessage(`{"job":"1"}`), "test"))
 	if !strings.Contains(string(b), "stdin") || !strings.Contains(string(b), "input_base64") || !strings.Contains(string(b), r.Stdin.SHA) {
 		t.Fatal(string(b))
 	}
@@ -96,7 +96,7 @@ func TestStdinEditedFakeEditorAndReuse(t *testing.T) {
 		t.Fatal("temp input leaked", files)
 	}
 	t.Setenv("VISUAL", "false")
-	got, err := invoke(t, s, "wrong", "run", "rerun", "1")
+	got, err := invoke(t, s, "wrong", "job", "rerun", "1")
 	if err != nil || got != out {
 		t.Fatalf("edited rerun %q %v", got, err)
 	}
@@ -110,7 +110,7 @@ func TestStdinEditedFakeEditorAndReuse(t *testing.T) {
 	if _, err := os.Stat(r.Stdin.Path); !os.IsNotExist(err) {
 		t.Fatal("input not deleted", err)
 	}
-	got, err = invoke(t, s, "", "run", "rerun", r2.ID)
+	got, err = invoke(t, s, "", "job", "rerun", r2.ID)
 	if err != nil || got != out {
 		t.Fatalf("rerun depended on deleted parent %q %v", got, err)
 	}
@@ -172,7 +172,7 @@ func TestStdinRetentionCapOffAndInherited(t *testing.T) {
 	if err != nil || r.Input != "abc" || r.Stdin.Bytes != 6 || !r.Stdin.Truncated || out.String() != "abcdef" {
 		t.Fatalf("cap %+v %v out=%q", r, err, out)
 	}
-	if err := dispatch(a, []string{"run", "rerun", "1"}); err == nil || !strings.Contains(err.Error(), "truncated") {
+	if err := dispatch(a, []string{"job", "rerun", "1"}); err == nil || !strings.Contains(err.Error(), "truncated") {
 		t.Fatal("replayed partial input", err)
 	}
 	a.in = strings.NewReader("input\n")
@@ -243,7 +243,7 @@ func TestStdinCatalogAndMCPBoundedInput(t *testing.T) {
 	if err != nil || len(r.Input) != 65*1024 {
 		t.Fatalf("input length %d %v", len(r.Input), err)
 	}
-	b, _ := json.Marshal(a.callTool("run_show", json.RawMessage(`{"run":"1"}`), "test"))
+	b, _ := json.Marshal(a.callTool("job_show", json.RawMessage(`{"job":"1"}`), "test"))
 	if len(b) > 8000 || !strings.Contains(string(b), r.Stdin.SHA) {
 		t.Fatalf("MCP omitted metadata or leaked large input: %d", len(b))
 	}
@@ -314,7 +314,7 @@ func TestStdinRelativePathAndRecentSources(t *testing.T) {
 	if err != nil || out != "relative" {
 		t.Fatalf("host stdin %q %v", out, err)
 	}
-	for _, words := range [][]string{{"run", "rerun"}, {"cmd", "rerun"}, {"cmd", "rerun", "relative", "extra"}} {
+	for _, words := range [][]string{{"job", "rerun"}, {"cmd", "rerun"}, {"cmd", "rerun", "relative", "extra"}} {
 		if _, err := invoke(t, s, "", words...); err == nil {
 			t.Fatal("missing/extra target accepted", words)
 		}

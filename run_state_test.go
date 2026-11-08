@@ -38,7 +38,7 @@ func TestRunStateDerivation(t *testing.T) {
 		{"ran beats dismissed", Command{ID: "b", Dismissed: true}, 1, statusRan, &at},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			st := runStateOf(tc.c, runs)
+			st := commandStatusOf(tc.c, runs)
 			if st.Count != tc.count || st.Status != tc.status || (st.Last == nil) != (tc.last == nil) || (st.Last != nil && !st.Last.Equal(*tc.last)) {
 				t.Fatalf("state=%+v", st)
 			}
@@ -74,7 +74,7 @@ func TestRunCountSurvivesKeepAndPruning(t *testing.T) {
 		t.Fatal(e)
 	}
 	for _, row := range rows {
-		st := runStateOf(row, runs)
+		st := commandStatusOf(row, runs)
 		if st.Count != want[row.Name] || st.Status != statusRan || st.Last == nil {
 			t.Fatalf("%s state=%+v", row.Name, st)
 		}
@@ -86,14 +86,14 @@ func TestDismissResetUndo(t *testing.T) {
 	one := addCommand(t, s, "one", "true\n")
 	addCommand(t, s, "two", "true\n")
 	a, _, _ := historyApp(t, s)
-	status := func(name string) runState {
+	status := func(name string) commandStatus {
 		t.Helper()
 		c, e := s.Resolve(name, false)
 		if e != nil {
 			t.Fatal(e)
 		}
 		runs, _ := s.Runs("")
-		return runStateOf(c, runs)
+		return commandStatusOf(c, runs)
 	}
 	// A selection is one change: both dismissed, one undo restores both.
 	call := func(verb string, args ochazuke.Arguments, subjects ...string) error {

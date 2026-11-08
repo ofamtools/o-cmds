@@ -36,32 +36,31 @@ func (a *App) verbs() []verbSpec {
 	}
 	runs := a.runSpecs()
 	for i := range runs {
-		runs[i].noun = "run"
+		runs[i].noun = "job"
 	}
 	return append(specs, runs...)
 }
 
 func (a *App) runSpecs() []verbSpec {
-	target := map[string]ochazuke.Parameter{"run": param("Run ID, unique prefix or global displayed number")}
+	target := map[string]ochazuke.Parameter{"job": param("Job ID, unique prefix or global displayed number")}
 	return []verbSpec{
 		{name: "list", description: "List runs, newest at the bottom; optionally filter by command", params: map[string]ochazuke.Parameter{"command": param("Command name, number or ID")}, positional: []string{"command"}, handler: a.listRuns, output: "run-table"},
-		{name: "show", description: "Show run metadata and labelled stdin/stdout/stderr", params: target, positional: []string{"run"}, handler: a.onRun(a.showRun), output: "run-show"},
-		{name: "view", description: "Read labelled run output in a text viewer", params: target, positional: []string{"run"}, handler: a.onRun(func(_ ochazuke.Ctx, r RunOutput) ochazuke.Result { return ochazuke.Done(runText(r)) }), text: true},
-		{name: "out", description: "Print captured stdout bytes", params: target, positional: []string{"run"}, handler: a.onRun(func(_ ochazuke.Ctx, r RunOutput) ochazuke.Result { return ochazuke.Done(r) }), output: "run-out"},
-		{name: "in", description: "Print retained stdin bytes (may be truncated)", params: target, positional: []string{"run"}, handler: a.onRun(func(_ ochazuke.Ctx, r RunOutput) ochazuke.Result { return ochazuke.Done(r) }), output: "run-in"},
-		{name: "err", description: "Print captured stderr bytes", params: target, positional: []string{"run"}, handler: a.onRun(func(_ ochazuke.Ctx, r RunOutput) ochazuke.Result { return ochazuke.Done(r) }), output: "run-err"},
-		{name: "delete", description: "Delete one run and its captured streams", params: target, positional: []string{"run"}, handler: a.onRun(func(_ ochazuke.Ctx, r RunOutput) ochazuke.Result {
+		{name: "show", description: "Read labelled run output in a text viewer", params: target, positional: []string{"job"}, handler: a.onRun(func(_ ochazuke.Ctx, r RunOutput) ochazuke.Result { return ochazuke.Done(runText(r)) }), text: true, output: "raw"},
+		{name: "out", description: "Print captured stdout bytes", params: target, positional: []string{"job"}, handler: a.onRun(func(_ ochazuke.Ctx, r RunOutput) ochazuke.Result { return ochazuke.Done(r) }), output: "run-out"},
+		{name: "in", description: "Print retained stdin bytes (may be truncated)", params: target, positional: []string{"job"}, handler: a.onRun(func(_ ochazuke.Ctx, r RunOutput) ochazuke.Result { return ochazuke.Done(r) }), output: "run-in"},
+		{name: "err", description: "Print captured stderr bytes", params: target, positional: []string{"job"}, handler: a.onRun(func(_ ochazuke.Ctx, r RunOutput) ochazuke.Result { return ochazuke.Done(r) }), output: "run-err"},
+		{name: "delete", description: "Delete one run and its captured streams", params: target, positional: []string{"job"}, handler: a.onRun(func(_ ochazuke.Ctx, r RunOutput) ochazuke.Result {
 			e := a.store.DeleteRun(r.ID)
 			a.refresh()
 			return result(nil, e)
 		}), destructive: true},
-		{name: "rerun", foreground: true, description: "Execute the current saved script with the run's args, cwd and stdin", params: target, positional: []string{"run"}, handler: a.onRun(a.rerun), cli: a.rerunCLI},
+		{name: "rerun", foreground: true, description: "Execute the current saved script with the run's args, cwd and stdin", params: target, positional: []string{"job"}, handler: a.onRun(a.rerun), cli: a.rerunCLI},
 	}
 }
 
 func (a *App) onRun(fn func(ochazuke.Ctx, RunOutput) ochazuke.Result) ochazuke.AppHandler {
 	return func(c ochazuke.Ctx) ochazuke.Result {
-		target := ochazuke.StringArg(c.Args, "run", "")
+		target := ochazuke.StringArg(c.Args, "job", "")
 		if target == "" && c.Instance != nil {
 			target, _ = c.Instance.Data.(string)
 		}
@@ -244,7 +243,7 @@ func (a *App) executionTarget(name, field string, words []string) (string, error
 }
 
 func (a *App) rerunCLI(ctx context.Context, words []string) error {
-	target, err := a.executionTarget("run rerun", "run", words)
+	target, err := a.executionTarget("job rerun", "job", words)
 	if err != nil || target == "" {
 		return err
 	}

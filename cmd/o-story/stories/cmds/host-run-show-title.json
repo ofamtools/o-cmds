@@ -1,5 +1,5 @@
 {
-  "name": "cmds/host-run-view-title",
+  "name": "cmds/host-run-show-title",
   "area": "cmds",
   "host": true,
   "commands": [{"name": "named-result", "script": "printf 'result body\\n'; exit 3\n"}],

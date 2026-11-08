@@ -1,0 +1,27 @@
+kind	old	new	note
+noun	cmd.run	cmd.job	a recorded execution; bindings, pickers and the CLI group follow (o-cmds job list); the on-disk runs/ directory and the Go type Run are unchanged
+verb	cmd.run.list	cmd.job.list	
+verb	cmd.run.show	cmd.job.get {prop: output}	the labelled metadata and streams are the computed prop output; the standard get answers the record
+verb	cmd.run.view	cmd.job.show	the text viewer
+verb	cmd.run.out / in / err	cmd.job.out / in / err	kept as operations: raw, binary-safe streams (base64 when needed), not a value of the record
+verb	cmd.run.rerun	cmd.job.rerun	
+verb	cmd.run.delete	cmd.job.delete	destructive, agent-never, as before
+param	run (run verbs: --run RUN)	job (--job JOB)	
+verb	cmd.cmd.runs	cmd.cmd.jobs	relation: a command's jobs (its run history)
+verb	cmd.cmd.runs-clear	cmd.cmd.jobs-clear	destructive, agent-never, as before
+verb	cmd.cmd.run-view	cmd.cmd.run-show	run with the shared recorder and read the captured streams; the compound name is judged as a whole
+verb	cmd.cmd.view	cmd.cmd.show	the script text (the viewer in the TUI)
+verb	cmd.cmd.show	cmd.cmd.get	the record; the script is the computed prop script, the metadata the other props
+verb	cmd.cmd.copy	cmd.cmd.yank	always copies to the clipboard and answers the script; printing it is cmd show
+verb	cmd.cmd.copy --yank	cmd.cmd.yank	
+verb	cmd.cmd.path	cmd.cmd.get {prop: path} (the storage directory, a collection prop) and {prop: script_path} (one command)	read-only verb became props
+mcp	run_list / run_show {run}	job_list / job_show {job}	the curated MCP tools
+mcp	cmd.run list|show|out|err (setup note)	cmd.job list|show|out|err	
+setting	list.hide-archived	collection.hide-archived	ochazuke v0.104 renamed the list.* settings
+binding	cmd/normal enter -> cmd.run-view	cmd/normal enter -> cmd.run-show	
+binding	cmd/normal v -> cmd.view	cmd/normal v -> cmd.show	
+binding	cmd/normal y -> cmd.copy {yank: true}	cmd/normal y -> cmd.yank	
+picker	run	job	the jobs picker
+cli	o-cmds run list|show|out|err|in|rerun|delete	o-cmds job list|get|out|err|in|rerun|delete	`o-cmds cmd run NAME` (the verb) is unchanged
+cli	o-cmds setup status / setup plan	o-cmds setup check / setup install --dry-run	ochazuke v0.104/v0.105
+go	runState, runStateOf	commandStatus, commandStatusOf	a command's run count and last-run status

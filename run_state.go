@@ -18,13 +18,13 @@ const (
 	statusDismissed = "dismissed" // never run, marked seen (cmd.dismiss)
 )
 
-type runState struct {
+type commandStatus struct {
 	Count  int
 	Last   *time.Time
 	Status string
 }
 
-func runStateOf(c Command, runs []Run) runState {
+func commandStatusOf(c Command, runs []Run) commandStatus {
 	total, last := 0, c.LastRunAt
 	if c.RunsTotal != nil {
 		total = *c.RunsTotal
@@ -40,7 +40,7 @@ func runStateOf(c Command, runs []Run) runState {
 			}
 		}
 	}
-	st := runState{Count: max(0, total-c.RunsBase), Last: last}
+	st := commandStatus{Count: max(0, total-c.RunsBase), Last: last}
 	if st.Count == 0 || (c.ResetAt != nil && last != nil && !last.After(*c.ResetAt)) {
 		st.Last = nil
 	}
@@ -121,7 +121,7 @@ func (a *App) undismiss() ochazuke.AppHandler {
 }
 
 // reset forgets a command's runs: its count goes to 0 and it reads as new
-// again. Retained run records stay (cmd.runs-clear deletes them), so a
+// again. Retained run records stay (cmd.jobs-clear deletes them), so a
 // reset loses nothing undo cannot bring back.
 func (a *App) reset() ochazuke.AppHandler {
 	return func(c ochazuke.Ctx) ochazuke.Result {
@@ -150,7 +150,7 @@ func validTone(v any) error {
 	return nil
 }
 
-func lastCell(st runState, now time.Time) string {
+func lastCell(st commandStatus, now time.Time) string {
 	if st.Last == nil {
 		return "-"
 	}

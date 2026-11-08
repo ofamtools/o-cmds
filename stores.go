@@ -2,12 +2,13 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"slices"
 
 	"ofam.dev/ochazuke"
 )
 
-// The cmd and run nouns are thing nouns (DESIGN-001).
+// The cmd and job nouns are thing nouns (DESIGN-001).
 //
 // cmd is a store over the command records: list and get read them
 // (archived ones too, which the archive-role prop marks); set writes name
@@ -18,12 +19,15 @@ import (
 // brings it back) and agents never run it. list (filter, numbered rows)
 // and edit (opens $EDITOR on the script) also stay named verbs.
 //
-// run is a store over the run records, read and delete only: a run is a
+// job is a store over the run records, read and delete only: a job is a
 // record of what happened, so create and set are unavailable. Its named
 // verbs list and delete stay (delete is destructive and agents never run
-// it); show, view, out, in, err and rerun are run's own.
+// it); show (the viewer), out, in, err (raw, binary-safe streams) and
+// rerun are job's own, and get answers the record (its computed prop
+// output holds the labelled streams). A command's script is the computed
+// prop script and the storage directory the collection prop path.
 
-func cmdStoreProps() []ochazuke.PropSpec {
+func (a *App) cmdStoreProps() []ochazuke.PropSpec {
 	text := func(name, desc string) ochazuke.PropSpec {
 		return ochazuke.PropSpec{Name: name, ReadOnly: true, Parameter: ochazuke.Parameter{Type: "string", Description: desc}}
 	}
@@ -36,7 +40,17 @@ func cmdStoreProps() []ochazuke.PropSpec {
 		text("cwd", "The directory it runs in"),
 		text("created", "When it was recorded (RFC 3339)"),
 		{Name: "tags", ReadOnly: true, Parameter: ochazuke.Parameter{Type: ochazuke.SettingList, Description: "Tags"}},
-		text("script_path", "The script's path (cmd path prints it too)"),
+		text("script_path", "The script's path"),
+		{Name: "script", ReadOnly: true, Parameter: ochazuke.Parameter{Type: "string", Description: "The script's text"},
+			Read: func(_ ochazuke.Ctx, t ochazuke.Thing) (any, error) {
+				row, err := a.store.Resolve(fmt.Sprint(t["id"]), a.newestFirst())
+				if err != nil {
+					return nil, err
+				}
+				return a.store.Script(row)
+			}},
+		{Name: "path", Subject: ochazuke.SubjectCollection, Parameter: ochazuke.Parameter{Type: "string", Description: "The storage directory"},
+			Read: func(ochazuke.Ctx, ochazuke.Thing) (any, error) { return a.store.Dir, nil }},
 	}
 }
 
@@ -54,7 +68,7 @@ func cmdThing(c Command) (ochazuke.Thing, error) {
 }
 
 func (a *App) cmdStore() ochazuke.Store {
-	return ochazuke.Store{Kind: ochazuke.Collection,
+	return ochazuke.Store{Kind: ochazuke.KindCollection,
 		Get: func(_ ochazuke.Ctx, id string) (ochazuke.Thing, error) {
 			c, err := a.store.Resolve(id, a.newestFirst())
 			if err != nil {
@@ -113,7 +127,7 @@ func (a *App) cmdStore() ochazuke.Store {
 	}
 }
 
-func runProps() []ochazuke.PropSpec {
+func (a *App) jobProps() []ochazuke.PropSpec {
 	text := func(name, desc string) ochazuke.PropSpec {
 		return ochazuke.PropSpec{Name: name, ReadOnly: true, Parameter: ochazuke.Parameter{Type: "string", Description: desc}}
 	}
@@ -128,11 +142,19 @@ func runProps() []ochazuke.PropSpec {
 		{Name: "exit_code", ReadOnly: true, Parameter: ochazuke.Parameter{Type: ochazuke.SettingInteger, Description: "The exit status"}},
 		text("signal", "The signal that ended it"),
 		text("source", "Where the run came from"),
+		{Name: "output", ReadOnly: true, Parameter: ochazuke.Parameter{Type: "string", Description: "Labelled stdin, stdout and stderr with the metadata (job show reads it in a viewer)"},
+			Read: func(_ ochazuke.Ctx, t ochazuke.Thing) (any, error) {
+				r, err := a.store.ReadRun(fmt.Sprint(t["id"]))
+				if err != nil {
+					return nil, err
+				}
+				return runText(r), nil
+			}},
 	}
 }
 
 func (a *App) runStore() ochazuke.Store {
-	return ochazuke.Store{Kind: ochazuke.Collection,
+	return ochazuke.Store{Kind: ochazuke.KindCollection,
 		Get: func(_ ochazuke.Ctx, id string) (ochazuke.Thing, error) {
 			rows, err := a.store.Runs("")
 			if err != nil {
@@ -166,8 +188,8 @@ func (a *App) runStore() ochazuke.Store {
 			return err
 		},
 		Missing: map[string]string{
-			"create": "a run is a record of what happened; cmd run makes one",
-			"set":    "a run is a record of what happened and does not change",
+			"create": "a job is a record of what happened; cmd run makes one",
+			"set":    "a job is a record of what happened and does not change",
 		},
 	}
 }

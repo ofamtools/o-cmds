@@ -191,11 +191,11 @@ func TestRunHistoryCLIAndMCP(t *testing.T) {
 		words []string
 		want  string
 	}{
-		{[]string{"cmd", "runs", "rep"}, "exit 0"},
-		{[]string{"run", "list", "replay"}, r.ID},
-		{[]string{"run", "show", "1"}, "--- stderr ---\nerr"},
-		{[]string{"run", "out", r.ID[:25]}, cwd + ":original arg"},
-		{[]string{"run", "err", "run/" + r.ID}, "err"},
+		{[]string{"cmd", "jobs", "rep"}, "exit 0"},
+		{[]string{"job", "list", "replay"}, r.ID},
+		{[]string{"job", "show", "1"}, "--- stderr ---\nerr"},
+		{[]string{"job", "out", r.ID[:25]}, cwd + ":original arg"},
+		{[]string{"job", "err", "run/" + r.ID}, "err"},
 	} {
 		out, e := invoke(t, s, "", tc.words...)
 		if e != nil || !strings.Contains(out, tc.want) {
@@ -206,30 +206,30 @@ func TestRunHistoryCLIAndMCP(t *testing.T) {
 	if _, e := s.Change(c.ID, func(c *Command, _ []Command) { c.Cwd = t.TempDir() }); e != nil {
 		t.Fatal(e)
 	}
-	out, e := invoke(t, s, "", "run", "rerun", "1")
+	out, e := invoke(t, s, "", "job", "rerun", "1")
 	if e != nil || out != cwd+":original arg" {
 		t.Fatalf("rerun %q %v", out, e)
 	}
 	a, _, _ := historyApp(t, s)
 	for _, tc := range []struct{ tool, args, want string }{
-		{"run_list", `{"command":"rep"}`, r.ID},
-		{"run_show", `{"run":"1"}`, "original arg"},
-		{"run_rerun", `{"run":"1"}`, "unknown tool"},
-		{"run_delete", `{"run":"1"}`, "unknown tool"},
+		{"job_list", `{"command":"rep"}`, r.ID},
+		{"job_show", `{"job":"1"}`, "original arg"},
+		{"run_rerun", `{"job":"1"}`, "unknown tool"},
+		{"run_delete", `{"job":"1"}`, "unknown tool"},
 	} {
 		b, _ := json.Marshal(a.callTool(tc.tool, json.RawMessage(tc.args), "agent"))
 		if !strings.Contains(string(b), tc.want) {
 			t.Fatalf("%s: %s", tc.tool, b)
 		}
 	}
-	if _, e := invoke(t, s, "", "run", "delete", "1"); e != nil {
+	if _, e := invoke(t, s, "", "job", "delete", "1"); e != nil {
 		t.Fatal(e)
 	}
 	rows, _ := s.Runs("")
 	if len(rows) != 1 {
 		t.Fatal("delete", rows)
 	}
-	if _, e := invoke(t, s, "", "cmd", "runs-clear", "replay"); e != nil {
+	if _, e := invoke(t, s, "", "cmd", "jobs-clear", "replay"); e != nil {
 		t.Fatal(e)
 	}
 	rows, _ = s.Runs("")
@@ -315,7 +315,7 @@ func TestRunHistoryBinaryAndZeroCap(t *testing.T) {
 		t.Fatal(e)
 	}
 	for _, tc := range []struct{ stream, want string }{{"out", "\xff\x00A"}, {"err", "\xfe\x00B"}} {
-		out, e := invoke(t, s, "", "run", tc.stream, "1")
+		out, e := invoke(t, s, "", "job", tc.stream, "1")
 		if e != nil || out != tc.want {
 			t.Fatalf("raw %s %q %v", tc.stream, out, e)
 		}
@@ -343,7 +343,7 @@ func TestRunHistoryRerunFailureAndScriptChange(t *testing.T) {
 	if e := os.WriteFile(c.Path, []byte("printf after; exit 7"), 0o600); e != nil {
 		t.Fatal(e)
 	}
-	out, e := invoke(t, s, "", "run", "rerun", "1")
+	out, e := invoke(t, s, "", "job", "rerun", "1")
 	if out != "after" || oden.ExitCode(e) != 7 {
 		t.Fatalf("rerun failure %q %v (code %d)", out, e, oden.ExitCode(e))
 	}

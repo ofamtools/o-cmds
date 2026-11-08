@@ -121,7 +121,7 @@ func dispatch(a *App, args []string) error {
 			return a.verbCLI(sh, v, words)
 		}})
 	}
-	for _, noun := range []string{"cmd", "run"} {
+	for _, noun := range []string{"cmd", "job"} {
 		app.Add(oden.Command{Name: noun, Summary: "inspect and manage " + noun + " records", Children: groups[noun]})
 	}
 	app.Add(oden.Command{Name: "view", Summary: "open the Commands page", Usage: "[--smoke] [--width N] [--height N]", Run: func(_ context.Context, args []string) error { return runTUI(a, args) }})
@@ -165,6 +165,14 @@ func (a *App) verbCLI(sh *ocli.Shell, v verbSpec, args []string) error {
 		return a.printRunResult(v.output, buf.Bytes())
 	}
 	var text string
+	if v.output == "raw" {
+		// A text answer printed exactly as the script or the labelled streams read.
+		if e := json.Unmarshal(buf.Bytes(), &text); e != nil {
+			return e
+		}
+		_, e := io.WriteString(a.out, text)
+		return e
+	}
 	if v.output == "script" {
 		var rec struct {
 			Script string `json:"script"`

@@ -51,9 +51,10 @@ func TestCommandMatchingAmbiguousNumberedInDisplayOrder(t *testing.T) {
 }
 
 func TestCommandMatchingEveryTargetVerb(t *testing.T) {
-	for _, verb := range []string{"show", "run", "copy", "edit", "delete", "pin", "unpin", "star", "path"} {
+	for _, verb := range []string{"show", "run", "yank", "edit", "delete", "pin", "unpin", "star"} {
 		t.Run(verb, func(t *testing.T) {
 			s := fixture(t)
+			t.Setenv("O_CMDS_CLIPBOARD", "cat >/dev/null")
 			command := addCommand(t, s, "play-o-json-tutorials", "printf tutorial\n")
 			var out bytes.Buffer
 			a, e := newApp(s, strings.NewReader(""), &out, &out)
@@ -63,6 +64,9 @@ func TestCommandMatchingEveryTargetVerb(t *testing.T) {
 			called := false
 			a.run = func(cmd *exec.Cmd) error {
 				called = true
+				if verb == "yank" {
+					return nil // the clipboard helper, not the script
+				}
 				if cmd.Args[len(cmd.Args)-1] != command.Path {
 					t.Fatalf("process args=%q", cmd.Args)
 				}
@@ -80,7 +84,7 @@ func TestCommandMatchingEveryTargetVerb(t *testing.T) {
 }
 
 func TestCommandMatchingAmbiguityNeverActs(t *testing.T) {
-	for _, verb := range []string{"show", "run", "copy", "edit", "delete", "pin", "unpin", "star", "path"} {
+	for _, verb := range []string{"show", "run", "yank", "edit", "delete", "pin", "unpin", "star"} {
 		t.Run(verb, func(t *testing.T) {
 			s := fixture(t)
 			addCommand(t, s, "play-one", "one")

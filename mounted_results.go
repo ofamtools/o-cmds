@@ -103,7 +103,7 @@ func (a *App) historyCLI(_ context.Context, words []string) error {
 	}
 	// The picker and its previews are the existing history UI. Its last
 	// modal closing ends this foreground session and restores the host.
-	if _, err := a.r.Execute(ochazuke.Request{Noun: "cmd", Verb: "runs", Args: ochazuke.Arguments{"target": row.ID}}); err != nil {
+	if _, err := a.r.Execute(ochazuke.Request{Noun: "cmd", Verb: "jobs", Args: ochazuke.Arguments{"target": row.ID}}); err != nil {
 		return err
 	}
 	if a.r.TopModal() == "" {

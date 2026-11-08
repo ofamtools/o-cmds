@@ -1,5 +1,5 @@
 {
-  "name": "cmds/host-run-view-limit-says-so",
+  "name": "cmds/host-run-show-limit-says-so",
   "area": "cmds",
   "host": true,
   "commands": [

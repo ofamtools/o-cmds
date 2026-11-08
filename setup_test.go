@@ -47,7 +47,7 @@ func TestSetupInstructionNote(t *testing.T) {
 	if e := os.WriteFile(claude, []byte(existing), 0600); e != nil {
 		t.Fatal(e)
 	}
-	out, e := runSetupCLI(t, s, "setup", "status", "--home", home)
+	out, e := runSetupCLI(t, s, "setup", "check", "--home", home)
 	if e != nil || !strings.Contains(out, "claude-md: missing") || !strings.Contains(out, "codex-agents: missing") {
 		t.Fatal(out, e)
 	}
@@ -60,7 +60,7 @@ func TestSetupInstructionNote(t *testing.T) {
 	for _, path := range []string{claude, codex} {
 		b, _ := os.ReadFile(path)
 		text := string(b)
-		if strings.Count(text, "<!-- o-cmds:begin -->") != 1 || !strings.Contains(text, "## Commands for the owner (o-cmds)") || !strings.Contains(text, "cmd add") || !strings.Contains(text, "first record it in o-cmds as a self-contained bash/zsh script") || !strings.Contains(text, "`mtm cmd add --name") || !strings.Contains(text, "`cmd.cmd add`") || !strings.Contains(text, "`mtm cmd runs NAME`") || strings.Contains(text, "cmds.cmd") || strings.Contains(text, "mtm cmds") || strings.Contains(text, "`mtm run") || !strings.Contains(text, "`mtm cmd run list`") || strings.Contains(text, "`o-cmds cmd add") {
+		if strings.Count(text, "<!-- o-cmds:begin -->") != 1 || !strings.Contains(text, "## Commands for the owner (o-cmds)") || !strings.Contains(text, "cmd add") || !strings.Contains(text, "first record it in o-cmds as a self-contained bash/zsh script") || !strings.Contains(text, "`mtm cmd add --name") || !strings.Contains(text, "`cmd.cmd add`") || !strings.Contains(text, "`mtm cmd jobs NAME`") || strings.Contains(text, "cmds.cmd") || strings.Contains(text, "mtm cmds") || strings.Contains(text, "`mtm cmd run list`") || strings.Contains(text, "`mtm run") || !strings.Contains(text, "`mtm cmd job list`") || strings.Contains(text, "`o-cmds cmd add") {
 			t.Fatalf("%s:\n%s", path, text)
 		}
 	}
@@ -74,7 +74,7 @@ func TestSetupInstructionNote(t *testing.T) {
 	if again, _ := os.ReadFile(claude); !bytes.Equal(first, again) {
 		t.Fatal("install is not idempotent")
 	}
-	if out, _ = runSetupCLI(t, s, "setup", "status", "--home", home); !strings.Contains(out, "claude-md: installed") || !strings.Contains(out, "codex-agents: installed") {
+	if out, _ = runSetupCLI(t, s, "setup", "check", "--home", home); !strings.Contains(out, "claude-md: installed") || !strings.Contains(out, "codex-agents: installed") {
 		t.Fatal(out)
 	}
 	if out, e = runSetupCLI(t, s, "setup", "uninstall", "--yes", "--home", home); e != nil {
@@ -108,14 +108,14 @@ func TestSetupOneFileTwoPaths(t *testing.T) {
 	if strings.Count(string(b), "<!-- o-cmds:begin -->") != 1 {
 		t.Fatalf("one file must hold one note:\n%s", b)
 	}
-	if out, _ := runSetupCLI(t, s, "setup", "status", "--home", home); !strings.Contains(out, "claude-md: installed") || !strings.Contains(out, "codex-agents: installed") {
+	if out, _ := runSetupCLI(t, s, "setup", "check", "--home", home); !strings.Contains(out, "claude-md: installed") || !strings.Contains(out, "codex-agents: installed") {
 		t.Fatal(out)
 	}
 }
 
 func setupPlan(t *testing.T, s *Store, home string) setup.Plan {
 	t.Helper()
-	out, err := runSetupCLI(t, s, "setup", "plan", "--home", home, "--json", "{}")
+	out, err := runSetupCLI(t, s, "setup", "install", "--dry-run", "--home", home, "--json", "{}")
 	if err != nil {
 		t.Fatal(out, err)
 	}
@@ -227,7 +227,7 @@ func TestSetupFollowSymlinkedPair(t *testing.T) {
 					}
 				}
 			}
-			statusArgs := append([]string{"setup", "status"}, argsHome...)
+			statusArgs := append([]string{"setup", "check"}, argsHome...)
 			if out, err := runSetupCLI(t, s, statusArgs...); err != nil || !strings.Contains(out, "claude-md: installed") || !strings.Contains(out, "codex-agents: installed") {
 				t.Fatal(out, err)
 			}
@@ -263,7 +263,7 @@ func TestSetupImportOnlyInstructions(t *testing.T) {
 		}
 	}
 	plan := setupPlan(t, s, home)
-	if len(plan.Writes) != 1 || plan.Writes[0].Path != source || plan.Items[0].State != setup.Skipped {
+	if len(plan.Writes) != 1 || plan.Writes[0].Path != source || plan.Items[0].Status != setup.Skipped {
 		t.Fatalf("double-read plan: %+v", plan)
 	}
 	for range 2 {

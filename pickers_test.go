@@ -16,7 +16,7 @@ func TestDeclaredPickers(t *testing.T) {
 	for _, d := range a.r.CatalogPickerDefs() {
 		got[d.Name] = d.Noun != "" && d.About != ""
 	}
-	for _, name := range []string{"cmd", "run"} {
+	for _, name := range []string{"cmd", "job"} {
 		if !got[name] {
 			t.Errorf("catalog does not list the %s picker: %v", name, got)
 		}

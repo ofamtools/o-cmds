@@ -33,7 +33,7 @@ func TestAgentArchiveRestoreAndReset(t *testing.T) {
 		}
 		return out
 	}
-	for _, args := range [][]string{{"cmd", "delete", c.ID}, {"run", "delete", "retained-run"}, {"cmd", "runs-clear", c.ID}} {
+	for _, args := range [][]string{{"cmd", "delete", c.ID}, {"job", "delete", "retained-run"}, {"cmd", "jobs-clear", c.ID}} {
 		if _, e := invoke(t, s, "", args...); e == nil {
 			t.Fatalf("agent deleted: %v", args)
 		}
@@ -51,7 +51,7 @@ func TestAgentArchiveRestoreAndReset(t *testing.T) {
 	if text, e := s.Script(c); e != nil || text != "printf 'retained bytes\\n'\n" {
 		t.Fatal(text, e)
 	}
-	call("setting", "set", "list.hide-archived", "false", "--scope", "file")
+	call("setting", "set", "collection.hide-archived", "false", "--scope", "file")
 	var listed []ocli.Row
 	if e := json.Unmarshal([]byte(call("cmd", "list", "--json", "{}")), &listed); e != nil {
 		t.Fatal(e)
@@ -75,7 +75,7 @@ func TestAgentArchiveRestoreAndReset(t *testing.T) {
 	if e != nil || len(runs) != 1 || runs[0].ID != "retained-run" {
 		t.Fatal(runs, e)
 	}
-	if state := runStateOf(current, runs); state.Count != 0 || state.Status != statusNew {
+	if state := commandStatusOf(current, runs); state.Count != 0 || state.Status != statusNew {
 		t.Fatal(state)
 	}
 	files, e := filepath.Glob(filepath.Join(s.Dir, ".history", "*.json"))
@@ -97,7 +97,7 @@ func TestAgentArchiveRestoreAndReset(t *testing.T) {
 	}
 	call("cmd", "undo")
 	current, e = s.Resolve(c.ID, false)
-	if e != nil || runStateOf(current, runs).Count != 1 {
+	if e != nil || commandStatusOf(current, runs).Count != 1 {
 		t.Fatal(current, e)
 	}
 }
@@ -119,8 +119,8 @@ func TestCommandRightsCatalog(t *testing.T) {
 		"cmd.delete":     {ochazuke.AgentNever, false},
 		"cmd.archive":    {ochazuke.AgentAllow, false},
 		"cmd.reset":      {ochazuke.AgentAllow, false},
-		"cmd.runs-clear": {ochazuke.AgentNever, true},
-		"run.delete":     {ochazuke.AgentNever, true},
+		"cmd.jobs-clear": {ochazuke.AgentNever, true},
+		"job.delete":     {ochazuke.AgentNever, true},
 	}
 	for _, noun := range catalog.Nouns {
 		for _, verb := range noun.Verbs {

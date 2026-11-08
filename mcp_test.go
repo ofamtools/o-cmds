@@ -44,7 +44,7 @@ func TestMCPToolsLifecycleAndNoRun(t *testing.T) {
 		names[tool.Name] = true
 	}
 	// Agents may dismiss (harmless, undoable); reset never reaches MCP.
-	if len(names) != 7 || !names["cmd_add"] || !names["cmd_list"] || !names["cmd_show"] || !names["run_list"] || !names["run_show"] || !names["cmd_dismiss"] || !names["cmd_undismiss"] || names["cmd_reset"] {
+	if len(names) != 7 || !names["cmd_add"] || !names["cmd_list"] || !names["cmd_show"] || !names["job_list"] || !names["job_show"] || !names["cmd_dismiss"] || !names["cmd_undismiss"] || names["cmd_reset"] {
 		t.Fatalf("tools=%v", names)
 	}
 	var call struct {

@@ -69,7 +69,7 @@ func clipboard(ctx context.Context, text string, run Runner, stderr io.Writer) e
 		}
 	}
 	if cmd == nil {
-		return fmt.Errorf("no clipboard helper; cmd copy NAME prints the script")
+		return fmt.Errorf("no clipboard helper; cmd show NAME prints the script")
 	}
 	cmd.Stdin = strings.NewReader(text)
 	cmd.Stderr = stderr

@@ -11,8 +11,8 @@ has not been migrated.
 
 | Key | Catalog verb | Host behavior |
 |---|---|---|
-| `v` | `cmd.view`, result `text` | Read-only script text viewer; standalone retains its numbered script viewer |
-| Enter | `cmd.run-view`, result `text` | Run with the shared recorder, then read captured stdout, stderr and exit status; both streams are capped by `runs.max-bytes` |
+| `v` | `cmd.show`, result `text` | Read-only script text viewer; standalone retains its numbered script viewer |
+| Enter | `cmd.run-show`, result `text` | Run with the shared recorder, then read captured stdout, stderr and exit status; both streams are capped by `runs.max-bytes` |
 | `H` | `cmd.history`, `foreground: true` | Full-screen o-cmds history with the existing picker and output preview; closing its last modal returns to the host |
 | `e` | `cmd.edit`, `foreground: true` | `$VISUAL`/`$EDITOR` receives a real terminal, including stdin |
 | `g e` | `cmd.edit-stdin`, `foreground: true` | Editor and script run receive the terminal |
@@ -20,8 +20,8 @@ has not been migrated.
 | `g r` | `cmd.rerun`, `foreground: true` | Rerun with original args/cwd/stdin on the terminal; output remains in recorded history |
 
 `cmd.run` remains a foreground streaming command for CLI and palette use.
-`cmd.show` still returns the command record with its script to MCP/CLI;
-`run.show` remains structured. `run.view` returns labelled retained input,
+`cmd.show` returns the script as text (the record is `cmd.get`);
+`job.get` remains structured (its computed prop `output` holds the labelled streams). `job.show` returns labelled retained input,
 stdout, stderr and metadata as text. No dual-form result protocol is needed.
 
 `keys.text-results` (ochazuke, default `true`) controls automatic text viewers

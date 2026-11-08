@@ -5,7 +5,7 @@
 * `app.go`: command noun, shared verbs and parameters, declarative agent and
   destruction metadata, transport-bound mutation identity, archive/restore flag
   handler, bindings, settings, catalog page and row formatting. Custom rows
-  honour `list.hide-archived`; archived records use names/IDs, not live numbers.
+  honour `collection.hide-archived`; archived records use names/IDs, not live numbers.
 * `setup.go`, `setup.json`: agent instruction-note setup items (Claude and Codex
   instruction files, own `o-cmds` markers) for ochazuke's shared `setup` verbs,
   with co-located block skip defaults (`setup.skip`).
@@ -37,7 +37,7 @@
 * `pick.go`: same-page selection bindings, stdout script result, cancellation.
 * `shell_init.go`: optional Bash/Zsh function generation and name validation.
 * `mcp.go`: curated seven-tool JSON-RPC stdio server, registry-derived schemas;
-  command add/list/show/dismiss/undismiss and read-only run list/show, never
+  command add/list/show/dismiss/undismiss and read-only job list/show, never
   execution or reset.
 * `setup_test.go`: install/uninstall idempotence, symlink follow, shared files and
   skip defaults, all under temp HOME.
