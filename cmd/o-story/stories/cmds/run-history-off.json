@@ -3,7 +3,7 @@
   "commands": [{"name": "quiet-command", "script": "printf quiet\n"}],
   "runs": [{"command": "quiet-command", "stdout": "recorded", "exitCode": 0}],
   "settings": {"view.jobs": false},
-  "script": ["H", "v", "esc"],
+  "script": ["H", "v", "q"],
   "expect": [
     {"after": 0, "lacks": ["Last run:"]},
     {"after": 1, "modal": false, "lacks": ["Runs: quiet-command"]},

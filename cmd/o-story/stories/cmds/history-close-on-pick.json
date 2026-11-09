@@ -3,6 +3,6 @@
   "commands": [{"name": "one-history", "script": "echo retained\n"}],
   "settings": {"history.keep-open": false},
   "runs": [{"command": "one-history", "stdout": "retained output", "stderr": "", "exitCode": 0}],
-  "script": ["H", "enter", "esc"],
+  "script": ["H", "enter", "q"],
   "expect": [{"after": 2, "modal": true, "contains": ["Run: one-history", "retained output"]}, {"after": 3, "modal": false, "selected": "one-history"}]
 }
