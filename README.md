@@ -341,8 +341,8 @@ leaves only a script is still listed as unassociated. Failed atomic writes
 retain hidden `.pending-*` recovery files.
 
 Author names default to `owner`. Agent additions use `O_CMDS_AUTHOR`,
-`TUIOS_AGENT_NAME` or `AGENT_NAME`; harness and pane/session fields come from
-`TUIOS_HARNESS`/`AGENT_HARNESS`, Codex/Claude markers and TUIOS identifiers.
+`MTM_AGENT_NAME` (else `TUIOS_AGENT_NAME`) or `AGENT_NAME`; harness and pane/session fields come from
+`MTM_HARNESS`/`AGENT_HARNESS` (else `TUIOS_HARNESS`), Codex/Claude markers and the `MTM_` (else `TUIOS_`) pane identifiers.
 `--author` overrides the name. No environment file or credentials are read.
 
 The TUI uses binding rows, with hints generated from the effective bindings.

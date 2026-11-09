@@ -61,7 +61,7 @@ func stampAuthor(getenv func(string) string, fallback string) Author {
 		}
 		return ""
 	}
-	a := Author{Name: first("O_CMDS_AUTHOR", "TUIOS_AGENT_NAME", "AGENT_NAME"), Harness: first("TUIOS_HARNESS", "AGENT_HARNESS"), Pane: first("TUIOS_PANE_ID"), Session: first("TUIOS_SESSION")}
+	a := Author{Name: first("O_CMDS_AUTHOR", paneEnv(getenv, "AGENT_NAME"), "AGENT_NAME"), Harness: first(paneEnv(getenv, "HARNESS"), "AGENT_HARNESS"), Pane: paneEnv(getenv, "PANE_ID"), Session: paneEnv(getenv, "SESSION")}
 	if a.Harness == "" {
 		if getenv("CODEX_THREAD_ID") != "" || getenv("CODEX_CI") != "" {
 			a.Harness = "codex"

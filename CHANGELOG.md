@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Changed: requires ochazuke v0.109.0 (esc only leaves insert in modals and `q` closes them; label-first pickers).
+- Changed: the pane variables are read as `MTM_X` first, then `TUIOS_X` (mtm sets both for one release): `ENV`, `SESSION`, `PANE_ID`, `HARNESS`, `AGENT_NAME`, through one `paneEnv` helper.
+
 ## v0.3.0 (2026-11-08)
 
 - Changed, breaking (LX8c, lexicon, one shot: no old-name aliases; every rename is in `docs/lexicon-renames-v0.105.tsv`): requires ochazuke v0.105.0. One word has one part of speech. There is no stored `state` field, so no data migration; the on-disk `runs/` directory is unchanged.
