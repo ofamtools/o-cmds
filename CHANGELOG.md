@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Requires published ochazuke v0.122.1 and oden v0.5.0. Command and job paths
+- Requires published ochazuke v0.124.0 and oden v0.5.1. Command and job paths
   are typed files or directories. Scripts open as files, never as executions;
   the inherited reveal, yank-path and open-with actions cover their paths.
 - Added script import from a file, stdin or a captured command's stdout,
@@ -21,9 +21,9 @@
   The old bare forms remain adapters. The picker reuses one registered handler
   for direct and interactive selection without redefining an application verb.
   Existing actions remain available.
-- Durable register transfers through a mounted host require the shared
-  ochazuke named-register persistence fix. The dependency manifest stays on
-  the published release until that fix is released.
+- Durable register transfers through a mounted host use the named-register
+  persistence released in ochazuke v0.124.0; `register.persist=false` opts
+  out.
 - Changed: `cmd show` and `job show` use the library's standard record form.
   The script viewer is `cmd show-script`; the labelled capture viewer is
   `job show-output`. The `v` binding follows the script viewer. The legacy

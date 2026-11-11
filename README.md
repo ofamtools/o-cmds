@@ -64,7 +64,7 @@ and `play-tutorials` selects `play`. Exact names and valid numbered positions
 take precedence. Ambiguous input prints the matching commands with their
 current list numbers and returns a failure; it never runs or changes a command.
 
-The pinned oden v0.5.0 supports exact/prefix matching here. Dash-segment forms
+The pinned oden v0.5.1 supports exact/prefix matching here. Dash-segment forms
 (`p-o-j-t`, `pojt`) and last-resort word fragments require a shared oden matcher
 extension; they are not implemented by a separate app matcher.
 
@@ -150,12 +150,12 @@ a fresh host subprocess cannot change the invoking TUI's page.
 
 Named register output uses the framework's `register set`/`append` verbs.
 Mounted calls go through the sanctioned host transport, not a peer binary.
-Durability and live-host refresh require the shared ochazuke register
-persistence fix; `register.persist=false` opts out after that fix is present.
+Durability and live-host refresh come from ochazuke's named-register
+persistence (v0.124.0); `register.persist=false` opts out.
 The app accepts only named registers `a-z` and uppercase aliases. Clipboard
 output is a separate explicit destination.
 
-The shared input/output kinds are not part of published ochazuke v0.122.1.
+The shared input/output kinds are not part of published ochazuke v0.124.0.
 Until their adoption, use `import --file` or `--command` and the explicit
 output parameters above. The handlers take readers and writers so adopting
 the shared kinds does not require another stream parser.

@@ -54,11 +54,11 @@ The captured recorder also runs unsaved scripts with `sh -c`, without creating
 a command record. Its job retains the exact script for rerun/save.
 
 Named register writes call the host's `ochazuke.register.set` or `append`
-through `cli.HostFromEnv` when mounted. The shared core register-persistence
-fix makes those subprocess writes durable and visible in the invoking host.
-Without that fix, published v0.122.1 registers are process-local. No app-side
-peer dispatch or persistence format is added. `register.persist`, default true
-in that fix, is the opt-out.
+through `cli.HostFromEnv` when mounted. ochazuke v0.124.0 persists named
+registers, which makes those subprocess writes durable and visible in the
+invoking host; through v0.123.0 registers were process-local. No app-side
+peer dispatch or persistence format is added. `register.persist`, default
+true, is the opt-out.
 
 `job open --with APPLICATION` uses the shared injectable OS opener and has an
 observable external effect. Without `with`, the generic opener table decides.
