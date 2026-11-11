@@ -35,8 +35,8 @@ type mcpTool struct {
 func (a *App) tools() []mcpTool {
 	allowed := []struct {
 		key, name string
-		params []string
-		required bool
+		params    []string
+		required  bool
 	}{
 		{"cmd.add", "cmd_add", []string{"name", "desc", "script", "cwd", "tags", "author"}, false},
 		{"cmd.list", "cmd_list", []string{"filter"}, false},
@@ -53,23 +53,23 @@ func (a *App) tools() []mcpTool {
 				continue
 			}
 			names := tool.params
-		props := map[string]any{}
-		for _, name := range names {
-			p := spec.params[name]
-			field := map[string]any{"type": p.Type, "description": p.Description}
-			if p.Type == "array" {
-				field["items"] = map[string]string{"type": "string"}
+			props := map[string]any{}
+			for _, name := range names {
+				p := spec.params[name]
+				field := map[string]any{"type": p.Type, "description": p.Description}
+				if p.Type == "array" {
+					field["items"] = map[string]string{"type": "string"}
+				}
+				props[name] = field
 			}
-			props[name] = field
-		}
-		schema := map[string]any{"type": "object", "properties": props, "additionalProperties": false}
-		if spec.name == "add" {
-			schema["required"] = []string{"script"}
-		}
-		if tool.required {
-			schema["required"] = names
-		}
-		out = append(out, mcpTool{Name: tool.name, Description: spec.description, InputSchema: schema})
+			schema := map[string]any{"type": "object", "properties": props, "additionalProperties": false}
+			if spec.name == "add" {
+				schema["required"] = []string{"script"}
+			}
+			if tool.required {
+				schema["required"] = names
+			}
+			out = append(out, mcpTool{Name: tool.name, Description: spec.description, InputSchema: schema})
 		}
 	}
 	return out

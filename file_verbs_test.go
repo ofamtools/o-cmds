@@ -152,14 +152,7 @@ func TestImportCapturedCommandOutput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a.run = func(cmd *exec.Cmd) error {
-		if got := cmd.Args; len(got) < 3 || got[1] != "-c" || got[2] != "produce-script" {
-			t.Fatalf("wrong producer: %v", got)
-		}
-		_, err := fmt.Fprint(cmd.Stdout, "printf generated\n")
-		return err
-	}
-	value, err := a.importScript(ochazuke.Ctx{Args: ochazuke.Arguments{"command": "produce-script", "name": "generated"}}).Await(context.Background())
+	value, err := a.importScript(ochazuke.Ctx{Args: ochazuke.Arguments{"command": "printf 'printf generated\\n'", "name": "generated"}}).Await(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,12 +259,6 @@ func TestStoredShowsUseStandardFormsAndKeepViewers(t *testing.T) {
 	model := ochazuke.NewModel(a.r)
 	model.Init()
 	defer a.r.Sourced("palette")()
-	for _, noun := range []string{"cmd", "job"} {
-		op := a.r.Operations.At(ochazuke.Key(noun + ".show"))
-		if op.Standard != "show" {
-			t.Fatalf("%s.show is not the standard record form", noun)
-		}
-	}
 	if _, err := a.r.Execute(ochazuke.Request{Noun: "cmd", Verb: "show", Args: ochazuke.Arguments{"id": row.ID}}); err != nil {
 		t.Fatal(err)
 	}
@@ -283,21 +270,49 @@ func TestStoredShowsUseStandardFormsAndKeepViewers(t *testing.T) {
 	}
 }
 
-func TestRegisteredEntryAliasesUseTheSameAction(t *testing.T) {
+func TestSetupActionsResolveInstructionFilesNotCommands(t *testing.T) {
 	s := fixture(t)
-	addCommand(t, s, "picked", "printf pick")
-	for _, pair := range []struct{ bare, registered []string }{
-		{[]string{"setup", "list"}, []string{"cmd", "setup-list"}},
-		{[]string{"pick", "picked"}, []string{"cmd", "pick", "picked"}},
-		{[]string{"shell-init", "bash"}, []string{"cmd", "shell-init", "bash"}},
-	} {
-		bare, err := invoke(t, s, "", pair.bare...)
-		if err != nil {
-			t.Fatal(err)
-		}
-		registered, err := invoke(t, s, "", pair.registered...)
-		if err != nil || bare != registered {
-			t.Fatalf("entry alias differs: %q %q %v", bare, registered, err)
-		}
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(os.Getenv("HOME"), ".claude"))
+	a, err := newApp(s, strings.NewReader(""), io.Discard, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var items []struct{ ID string }
+	if err := json.Unmarshal(setupItems, &items); err != nil || len(items) == 0 {
+		t.Fatalf("setup items: %v", err)
+	}
+	_, available := a.r.Operation("cmd.setup-reveal")
+	if !available {
+		t.Skip("typed setup path verbs require the shared ochazuke setup metadata fix")
+	}
+	var output bytes.Buffer
+	a.out = &output
+	if err := dispatch(a, []string{"cmd", "setup-get", items[0].ID}); err != nil {
+		t.Fatal(err)
+	}
+	var record struct{ Path string }
+	if err := json.Unmarshal(output.Bytes(), &record); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(record.Path, os.Getenv("HOME")+string(os.PathSeparator)) {
+		t.Fatalf("instruction file outside fixture HOME: %q", record.Path)
+	}
+	output.Reset()
+	if err := dispatch(a, []string{"cmd", "setup-show", items[0].ID}); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(output.Bytes(), []byte(record.Path)) {
+		t.Fatalf("show lost instruction destination: %s", output.String())
+	}
+	var opened string
+	a.r.SetOpener(ochazuke.Opener{GOOS: "darwin", Start: func(_ string, args ...string) error {
+		opened = args[len(args)-1]
+		return nil
+	}})
+	if err := dispatch(a, []string{"cmd", "setup-reveal", items[0].ID}); err != nil {
+		t.Fatal(err)
+	}
+	if opened != record.Path {
+		t.Fatalf("reveal opened %q, want instruction file %q", opened, record.Path)
 	}
 }

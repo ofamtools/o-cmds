@@ -33,10 +33,10 @@ type Command struct {
 	Deleted     bool      `json:"deleted,omitempty"`
 	Path        string    `json:"path"`
 	// Line is execution-only: an unsaved line never creates a command record.
-	Line *string `json:"-"`
-	JobID string `json:"-"`
-	Source string `json:"source,omitempty"`
-	SourcePath string `json:"source_path,omitempty"`
+	Line       *string `json:"-"`
+	JobID      string  `json:"-"`
+	Source     string  `json:"source,omitempty"`
+	SourcePath string  `json:"source_path,omitempty"`
 	// RunsTotal counts every run ever started, independent of jobs.keep;
 	// undo never rolls it back. Nil (metadata from before the counter)
 	// counts the retained run records instead (runCount).
