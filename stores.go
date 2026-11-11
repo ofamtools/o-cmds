@@ -37,10 +37,12 @@ func (a *App) cmdStoreProps() []ochazuke.PropSpec {
 		{Name: "pinned", Parameter: ochazuke.Parameter{Type: ochazuke.SettingBoolean, Description: "Pinned without moving its chronological position"}},
 		{Name: "archived", Role: ochazuke.RoleArchive, Parameter: ochazuke.Parameter{Type: ochazuke.SettingBoolean, Description: "Hidden from the default views; the script and undo history are kept"}},
 		text("description", "What the command does"),
-		text("cwd", "The directory it runs in"),
+		pathProp("script_path", "The script's path (opening it never executes it)", ochazuke.PathFile),
+		pathProp("cwd", "The directory it runs in", ochazuke.PathDir),
 		text("created", "When it was recorded (RFC 3339)"),
 		{Name: "tags", ReadOnly: true, Parameter: ochazuke.Parameter{Type: ochazuke.SettingList, Description: "Tags"}},
-		text("script_path", "The script's path"),
+		pathProp("source_path", "The original imported script file, not the stored script", ochazuke.PathFile),
+		text("source", "Import provenance: file, stdin, job or command"),
 		{Name: "script", ReadOnly: true, Parameter: ochazuke.Parameter{Type: "string", Description: "The script's text"},
 			Read: func(_ ochazuke.Ctx, t ochazuke.Thing) (any, error) {
 				row, err := a.store.Resolve(fmt.Sprint(t["id"]), a.newestFirst())
@@ -49,7 +51,7 @@ func (a *App) cmdStoreProps() []ochazuke.PropSpec {
 				}
 				return a.store.Script(row)
 			}},
-		{Name: "path", Subject: ochazuke.SubjectCollection, Parameter: ochazuke.Parameter{Type: "string", Description: "The storage directory"},
+		{Name: "path", Subject: ochazuke.SubjectCollection, Parameter: ochazuke.Parameter{Type: "path", Path: ochazuke.PathDir, Description: "The storage directory"},
 			Read: func(ochazuke.Ctx, ochazuke.Thing) (any, error) { return a.store.Dir, nil }},
 	}
 }
@@ -134,9 +136,15 @@ func (a *App) jobProps() []ochazuke.PropSpec {
 	return []ochazuke.PropSpec{
 		{Name: "id", Key: true, Parameter: ochazuke.Parameter{Type: "string", Description: "The run's ID (a unique prefix or a displayed number names it too)"}},
 		{Name: "command_name", Role: ochazuke.RoleLabel, ReadOnly: true, Parameter: ochazuke.Parameter{Type: "string", Description: "The command it ran"}},
-		text("command_id", "The command's stable ID"),
+		{Name: "command_id", Role: ochazuke.RoleOwner, ReadOnly: true, Parameter: ochazuke.Parameter{Type: "string", Noun: "cmd", Description: "The saved command's stable ID; empty for an unsaved line"}},
 		{Name: "args", ReadOnly: true, Parameter: ochazuke.Parameter{Type: ochazuke.SettingList, Description: "The arguments it ran with"}},
-		text("cwd", "The directory it ran in"),
+		pathProp("stdout_path", "The retained stdout capture", ochazuke.PathFile),
+		pathProp("cwd", "The directory it ran in", ochazuke.PathDir),
+		pathProp("stdin_path", "The original stdin file or retained edited buffer", ochazuke.PathFile),
+		pathProp("input_path", "The retained stdin capture", ochazuke.PathFile),
+		pathProp("stderr_path", "The retained stderr capture", ochazuke.PathFile),
+		pathProp("metadata_path", "The job metadata file", ochazuke.PathFile),
+		text("status", "Running, finished or failed to start"),
 		text("started", "When it started (RFC 3339)"),
 		text("ended", "When it ended; empty while unfinished"),
 		{Name: "exit_code", ReadOnly: true, Parameter: ochazuke.Parameter{Type: ochazuke.SettingInteger, Description: "The exit status"}},
@@ -164,7 +172,7 @@ func (a *App) runStore() ochazuke.Store {
 			if err != nil {
 				return nil, err
 			}
-			return ochazuke.ThingOf(r)
+			return a.jobThing(r)
 		},
 		List: func(ochazuke.Ctx, ochazuke.ListQuery) ([]ochazuke.Thing, error) {
 			rows, err := a.store.Runs("")
@@ -173,7 +181,7 @@ func (a *App) runStore() ochazuke.Store {
 			}
 			out := make([]ochazuke.Thing, len(rows))
 			for i, r := range rows {
-				if out[i], err = ochazuke.ThingOf(r); err != nil {
+				if out[i], err = a.jobThing(r); err != nil {
 					return nil, err
 				}
 				if r.Args == nil {
@@ -192,4 +200,31 @@ func (a *App) runStore() ochazuke.Store {
 			"set":    "a job is a record of what happened and does not change",
 		},
 	}
+}
+
+func pathProp(name, description, kind string) ochazuke.PropSpec {
+	return ochazuke.PropSpec{Name: name, ReadOnly: true, Parameter: ochazuke.Parameter{Type: "path", Path: kind, Description: description}}
+}
+
+func (a *App) jobThing(r Run) (ochazuke.Thing, error) {
+	t, err := ochazuke.ThingOf(r)
+	if err != nil {
+		return nil, err
+	}
+	t["stdin_path"] = r.Stdin.Path
+	t["input_path"] = ""
+	if r.Stdin.Kind != "" && r.Stdin.Kind != "none" {
+		t["input_path"] = a.store.runPath(r, ".in")
+	}
+	t["stdout_path"] = a.store.runPath(r, ".out")
+	t["stderr_path"] = a.store.runPath(r, ".err")
+	t["metadata_path"] = a.store.runPath(r, ".json")
+	t["status"] = "running"
+	if r.Ended != nil {
+		t["status"] = "finished"
+		if r.ExitCode == nil && r.Signal == "" {
+			t["status"] = "failed"
+		}
+	}
+	return t, nil
 }

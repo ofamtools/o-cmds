@@ -19,6 +19,11 @@ import (
 type Runner func(*exec.Cmd) error
 
 func scriptCommand(ctx context.Context, c Command, args []string) *exec.Cmd {
+	if c.Line != nil {
+		cmd := exec.CommandContext(ctx, "sh", append([]string{"-c", *c.Line, "o-cmds-line"}, args...)...)
+		cmd.Dir = c.Cwd
+		return cmd
+	}
 	cmd := exec.CommandContext(ctx, "sh", append([]string{c.Path}, args...)...)
 	cmd.Dir = c.Cwd
 	return cmd

@@ -159,18 +159,32 @@ func (s *captureStream) close() error {
 func (a *App) prepareRun(cmd *exec.Cmd, c Command, args []string, source string, inputs ...*runInput) (func(error) error, error) {
 	// The durable count goes up whatever jobs.keep retains. Counting never
 	// blocks a run: its error is reported with the run's completion.
-	countErr := a.store.CountRun(c.ID, time.Now())
-	if countErr != nil {
-		countErr = fmt.Errorf("count run: %w", countErr)
+	var countErr error
+	if c.Line == nil {
+		countErr = a.store.CountRun(c.ID, time.Now())
+		if countErr != nil {
+			countErr = fmt.Errorf("count run: %w", countErr)
+		}
 	}
-	a.refresh()
+	if c.Line == nil {
+		a.refresh()
+	}
 	keep := a.r.Settings().Int("jobs.keep")
+	if c.Line != nil {
+		keep = max(1, keep) // an unsaved line must leave its only durable record
+	}
 	if keep == 0 {
 		return func(error) error { return countErr }, nil
 	}
-	script, err := a.store.Script(c)
-	if err != nil {
-		return nil, err
+	var script string
+	var err error
+	if c.Line != nil {
+		script = *c.Line
+	} else {
+		script, err = a.store.Script(c)
+		if err != nil {
+			return nil, err
+		}
 	}
 	id, err := token()
 	if err != nil {
@@ -187,6 +201,10 @@ func (a *App) prepareRun(cmd *exec.Cmd, c Command, args []string, source string,
 	r := Run{ID: at.UTC().Format("20060102T150405.000000000Z") + "-" + id, CommandID: c.ID, CommandName: c.Name,
 		ScriptHash: fmt.Sprintf("%x", sha256.Sum256([]byte(script))), Args: append([]string{}, args...), Cwd: cwd,
 		Started: at.UTC(), Source: source, Author: stampAuthor(os.Getenv, "owner")}
+	r.Script = c.Line
+	if c.JobID != "" {
+		r.ID = c.JobID
+	}
 	r.Stdin.Kind = "none"
 	var input []byte
 	if len(inputs) > 0 && inputs[0] != nil {

@@ -13,14 +13,15 @@ import (
 	"unicode/utf8"
 )
 
-// Run snapshots execution identity; it deliberately does not snapshot the script.
-// A nil Ended denotes an unfinished run (including an interrupted recorder).
+// Run snapshots execution identity. Unsaved lines also retain their script so
+// they can be rerun or saved later without first creating a command.
 type Run struct {
 	Stdin        StdinSource   `json:"stdin"`
 	ID           string        `json:"id"`
 	CommandID    string        `json:"command_id"`
 	CommandName  string        `json:"command_name"`
 	ScriptHash   string        `json:"script_sha256"`
+	Script       *string       `json:"script,omitempty"`
 	Args         []string      `json:"args"`
 	Cwd          string        `json:"cwd"`
 	Started      time.Time     `json:"started"`
@@ -52,7 +53,11 @@ type RunOutput struct {
 }
 
 func (s *Store) runPath(r Run, ext string) string {
-	return filepath.Join(s.Dir, "runs", r.CommandID, r.ID+ext)
+	group := r.CommandID
+	if group == "" {
+		group = "unsaved"
+	}
+	return filepath.Join(s.Dir, "runs", group, r.ID+ext)
 }
 
 func safeRunPart(s string) bool {
@@ -61,7 +66,7 @@ func safeRunPart(s string) bool {
 
 // Caller holds the store lock. Metadata is the commit marker for the captured streams.
 func (s *Store) writeRun(r Run, out, errOut []byte, input ...[]byte) error {
-	if !safeRunPart(r.CommandID) || !safeRunPart(r.ID) {
+	if (!safeRunPart(r.CommandID) && !(r.CommandID == "" && r.Script != nil)) || !safeRunPart(r.ID) {
 		return errors.New("invalid run identity")
 	}
 	if err := os.MkdirAll(filepath.Dir(s.runPath(r, ".json")), 0o700); err != nil {
@@ -96,7 +101,7 @@ func (s *Store) runs() ([]Run, error) {
 		if err = json.Unmarshal(b, &r); err != nil {
 			return nil, fmt.Errorf("read run %s: %w", file, err)
 		}
-		if !safeRunPart(r.ID) || !safeRunPart(r.CommandID) || s.runPath(r, ".json") != file {
+		if (!safeRunPart(r.CommandID) && !(r.CommandID == "" && r.Script != nil)) || !safeRunPart(r.ID) || s.runPath(r, ".json") != file {
 			return nil, fmt.Errorf("invalid run identity in %s", file)
 		}
 		if r.Stdin.Kind == "" {

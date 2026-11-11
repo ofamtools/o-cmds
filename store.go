@@ -32,6 +32,11 @@ type Command struct {
 	Pinned      bool      `json:"pinned"`
 	Deleted     bool      `json:"deleted,omitempty"`
 	Path        string    `json:"path"`
+	// Line is execution-only: an unsaved line never creates a command record.
+	Line *string `json:"-"`
+	JobID string `json:"-"`
+	Source string `json:"source,omitempty"`
+	SourcePath string `json:"source_path,omitempty"`
 	// RunsTotal counts every run ever started, independent of jobs.keep;
 	// undo never rolls it back. Nil (metadata from before the counter)
 	// counts the retained run records instead (runCount).
@@ -255,6 +260,7 @@ func uniqueName(name string, rows []Command, except string) string {
 
 type Add struct {
 	Name, Description, Script, Cwd string
+	Source, SourcePath             string
 	Tags                           []string
 	Author                         Author
 }
@@ -279,6 +285,7 @@ func (s *Store) Add(a Add) (c Command, err error) {
 			a.Author.Name = "owner"
 		}
 		c = Command{ID: id, Name: name, Description: a.Description, Created: at, Author: a.Author, Cwd: a.Cwd, Tags: a.Tags, Path: s.path(id)}
+		c.Source, c.SourcePath = a.Source, a.SourcePath
 		if c.Cwd != "" {
 			c.Cwd, e = filepath.Abs(c.Cwd)
 			if e != nil {

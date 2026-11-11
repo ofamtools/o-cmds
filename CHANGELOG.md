@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+- Requires published ochazuke v0.122.1 and oden v0.5.0. Command and job paths
+  are typed files or directories. Scripts open as files, never as executions;
+  the inherited reveal, yank-path and open-with actions cover their paths.
+- Added script import from a file, stdin or a captured command's stdout,
+  export with write/append, duplicate, and the standard record form through
+  `cmd inspect`. Imported records retain their source.
+- Added `cmd run-line`, which captures an unsaved script as a job with its
+  running/completed record, exit status, input, output and errors. `job save`
+  makes a named script afterwards. Rerun preserves the line, arguments, cwd
+  and input provenance without creating a command first.
+- Added `job write` and `job yank` for stdout, stderr or retained stdin.
+  Destinations include files, stdout, clipboard and named registers; append
+  works for files and registers. Binary file/stdout transfers preserve bytes.
+  `job open` uses the generic opener or an explicitly named external application.
+- Registered the binary's page, picker, shell-function and legacy MCP entry
+  points as `cmd browse`, `cmd pick`, `cmd shell-init` and `cmd serve`.
+  The old bare forms remain adapters. Existing actions remain available.
+- Durable register transfers through a mounted host require the shared
+  ochazuke named-register persistence fix. The dependency manifest stays on
+  the published release until that fix is released.
+
 ## v0.4.0
 
 - Changed: requires ochazuke v0.110.1 (esc only leaves insert in modals and `q` closes them; label-first pickers).
