@@ -75,13 +75,13 @@ func dispatch(a *App, args []string) error {
 		if len(args) > 0 {
 			return oden.ErrNotFound
 		}
-		return runTUI(a, nil)
+		return dispatch(a, []string{"cmd", "browse"})
 	}))
 	sh := a.shell()
 	// Register the same app verbs with a thin stream adapter. Oden still
 	// owns groups, aliases, help and unique prefixes; ochazuke owns calls.
 	groups := map[string][]oden.Command{}
-	for _, spec := range a.verbs() {
+	for _, spec := range append(a.verbs(), a.setupSpecs()...) {
 		v := spec
 		params := []oden.Parameter{}
 		for _, name := range a.r.Operations.At(ochazuke.Key(v.noun + "." + v.name)).ParameterOrder() {
@@ -98,7 +98,7 @@ func dispatch(a *App, args []string) error {
 	// The standard verbs of the thing nouns (get, set, create, archive, ...)
 	// that no named verb replaces are reachable beside the named ones.
 	named := map[string]bool{}
-	for _, spec := range a.verbs() {
+	for _, spec := range append(a.verbs(), a.setupSpecs()...) {
 		named[spec.noun+"."+spec.name] = true
 	}
 	keys := make([]string, 0, a.r.Operations.Len())
@@ -124,14 +124,24 @@ func dispatch(a *App, args []string) error {
 	for _, noun := range []string{"cmd", "job"} {
 		app.Add(oden.Command{Name: noun, Summary: "inspect and manage " + noun + " records", Children: groups[noun]})
 	}
-	app.Add(oden.Command{Name: "view", Summary: "open the Commands page", Usage: "[--smoke] [--width N] [--height N]", Run: func(_ context.Context, args []string) error { return runTUI(a, args) }})
-	app.Add(oden.Command{Name: "pick", Summary: "choose a command and print its script without running it", Usage: "[NAME|NUMBER]", Run: func(_ context.Context, args []string) error { return a.pickCLI(args) }})
-	app.Add(oden.Command{Name: "shell-init", Summary: "print an optional current-shell command function", Usage: "zsh|bash [--name NAME]", Run: func(_ context.Context, args []string) error { return shellInit(args, a.out, a.errOut) }})
-	app.Add(oden.Command{Name: "mcp", Summary: "serve command add/list/show and run list/show over stdio (no execution tool)", Run: func(_ context.Context, args []string) error {
-		if len(args) > 0 {
-			return errors.New("usage: o-cmds mcp")
-		}
-		return a.mcp()
+	for _, entry := range []struct{ bare, verb, summary string }{
+		{"view", "browse", "open the Commands page"},
+		{"pick", "pick", "choose a script without executing it"},
+		{"shell-init", "shell-init", "print the optional current-shell function"},
+		{"mcp", "serve", "serve the legacy curated MCP protocol"},
+	} {
+		app.Add(oden.Command{Name: entry.bare, Summary: entry.summary, Run: func(_ context.Context, words []string) error {
+			return dispatch(a, append([]string{"cmd", entry.verb}, words...))
+		}})
+	}
+	var setupCommands []oden.Command
+	for _, op := range a.setupOperations() {
+		setupCommands = append(setupCommands, oden.Command{Name: op.Name(), Summary: op.Description, Run: func(_ context.Context, words []string) error {
+			return dispatch(a, append([]string{"cmd", "setup-" + op.Name()}, words...))
+		}})
+	}
+	app.Add(oden.Command{Name: "setup", Summary: "manage this app's instruction destinations", Children: setupCommands, Run: func(_ context.Context, words []string) error {
+		return dispatch(a, append([]string{"cmd", "setup-check"}, words...))
 	}})
 	ocli.Mount(app, sh)
 	app.HelpText += "\nGlobal: --data DIR overrides the command storage directory.\ncmd add reads stdin unless --file or --script supplies the script.\ncmd list is a table; --json '{}' requests catalog rows.\ncmd run NAME|NUMBER -- ARG... streams directly and returns the script's status."
@@ -160,6 +170,14 @@ func (a *App) verbCLI(sh *ocli.Shell, v verbSpec, args []string) error {
 	copyShell.Stdout = &buf
 	if e := copyShell.Run(background(), words); e != nil {
 		return e
+	}
+	if v.output == "bytes" {
+		var answer streamAnswer
+		if err := json.Unmarshal(buf.Bytes(), &answer); err != nil {
+			return err
+		}
+		_, err := a.out.Write(answer.Data)
+		return err
 	}
 	if strings.HasPrefix(v.output, "run-") {
 		return a.printRunResult(v.output, buf.Bytes())

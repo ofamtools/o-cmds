@@ -93,10 +93,13 @@ func (a *App) clearInputNotice() {
 	}
 }
 
-func (a *App) stdinFile(_ ochazuke.Ctx, row Command) ochazuke.Result {
+func (a *App) stdinFile(c ochazuke.Ctx, row Command) ochazuke.Result {
 	a.clearInputNotice()
+	if ochazuke.StringArg(c.Args, "stdin", "") != "" {
+		return a.runView(c, row)
+	}
 	if !a.tui {
-		return ochazuke.Failed(errors.New("use cmd run --stdin FILE"))
+		return ochazuke.Failed(c.Need("stdin", "Choose a file to run with as stdin"))
 	}
 	if !a.r.Settings().Bool("view.stdin") {
 		return ochazuke.Failed(errors.New("stdin picker disabled by view.stdin"))

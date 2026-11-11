@@ -6,8 +6,8 @@
   are typed files or directories. Scripts open as files, never as executions;
   the inherited reveal, yank-path and open-with actions cover their paths.
 - Added script import from a file, stdin or a captured command's stdout,
-  export with write/append, duplicate, and the standard record form through
-  `cmd inspect`. Imported records retain their source.
+  export with write/append, and script-aware duplicate. Imported records
+  retain their source.
 - Added `cmd run-line`, which captures an unsaved script as a job with its
   running/completed record, exit status, input, output and errors. `job save`
   makes a named script afterwards. Rerun preserves the line, arguments, cwd
@@ -22,6 +22,13 @@
 - Durable register transfers through a mounted host require the shared
   ochazuke named-register persistence fix. The dependency manifest stays on
   the published release until that fix is released.
+- Changed: `cmd show` and `job show` use the library's standard record form.
+  The script viewer is `cmd show-script`; the labelled capture viewer is
+  `job show-output`. The `v` binding follows the script viewer. The legacy
+  curated MCP names `cmd_show` and `job_show` retain their old viewer results.
+- App-specific setup operations are exported as `cmd.setup-*` using the
+  shared handlers, metadata and dry-run checks. Bare setup forms forward to
+  the same actions; no installer logic is duplicated.
 
 ## v0.4.0
 

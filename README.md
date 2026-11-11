@@ -37,7 +37,7 @@ With the installed binary on PATH:
 printf 'printf "hello %%s\\n" "$1"\n' | o cmds add --name hello --desc 'Say hello'
 printf 'pwd\n' | o cmds add --name where --desc 'Show the current directory'
 o cmds list
-o cmds show hello
+o cmds show-script hello
 o cmds cmd run hello -- 'Ada Lovelace'
 o cmds cmd run 2                 # names or displayed numbers: NAME|N
 o cmds                           # standalone TUI, selected on newest
@@ -57,20 +57,20 @@ positions in the current order; filtering preserves the unfiltered numbers.
 Names take precedence over numeric positions. Stable `cmd/ID` targets from JSON
 rows remain usable across renames and changes to the list.
 
-Every command-targeting verb and MCP `cmd_show` also accepts a unique name
-prefix: `cmd show play` can select `play-o-json-tutorials`. Matching reuses
+Script-targeting verbs and legacy MCP `cmd_show` accept a unique name
+prefix: `cmd show-script play` can select `play-o-json-tutorials`. Matching reuses
 oden's resolver, including its descendant rule: a prefix matching both `play`
 and `play-tutorials` selects `play`. Exact names and valid numbered positions
 take precedence. Ambiguous input prints the matching commands with their
 current list numbers and returns a failure; it never runs or changes a command.
 
-The pinned oden v0.1.1 supports exact/prefix matching only. Dash-segment forms
+The pinned oden v0.5.0 supports exact/prefix matching here. Dash-segment forms
 (`p-o-j-t`, `pojt`) and last-resort word fragments require a shared oden matcher
 extension; they are not implemented by a separate app matcher.
 
 ```sh
-o cmds cmd show 1
-o cmds cmd show hello            # print the script
+o cmds cmd show hello            # record; the UI opens its standard form
+o cmds cmd show-script hello     # print the script without running it
 o cmds cmd yank hello            # copy the script to the clipboard (and print it)
 EDITOR='code --wait' o cmds cmd edit hello
 o cmds cmd set hello --props '{"@label":"greeting"}'   # rename
@@ -95,6 +95,84 @@ source is chosen; stdout and stderr stream live, and
 the CLI returns the script's exit status. A missing recorded directory does
 not prevent saving; running reports the directory error. Script bytes are
 preserved, including when the script is empty or has no trailing newline.
+
+## Script input and captured output
+
+Importing, opening and executing are separate actions. `cmd import FILE`
+records a copy without running it. It keeps the original filename in
+`source_path`; the stored script has its own `script_path`. A missing cwd
+does not prevent recording. File reads and writes run as pending work.
+
+```sh
+o cmds cmd import ./task.sh --name task --cwd /path/to/project
+printf 'printf hello\n' | o cmds cmd import - --name piped
+o cmds cmd import --command "printf 'printf generated\\n'" --name generated
+o cmds cmd export task ./copy.sh
+o cmds cmd export task ./copies.sh --append
+o cmds cmd export task -         # exact script bytes on stdout
+o cmds cmd duplicate task task-copy
+o cmds cmd open task             # open the script file; never execute it
+o cmds cmd reveal task
+o cmds cmd yank-path task --prop script_path
+```
+
+`cmd import --command` captures the producer as a job and retains its ID in
+the imported record. A failed producer or truncated output is not silently
+imported; the producer's job remains available for inspection.
+
+`cmd run-line --line 'COMMAND'` runs without saving a command first. Its
+JSON answer is the completed job, including stdout, stderr and the exit code.
+A nonzero script exit is recorded in `exit_code`, not treated as a failed
+capture. `job list` and `job show` expose the record while it runs.
+`job save JOB NAME` records its exact unsaved script under a name afterwards.
+
+```sh
+o cmds cmd run-line --line 'cat; printf "warning\n" >&2' --stdin ./input.txt
+o cmds job show JOB_ID            # standard record/form
+o cmds job show-output JOB_ID     # labelled captures in a viewer
+o cmds job save JOB_ID saved-task
+o cmds job write JOB_ID ./result.json
+o cmds job write JOB_ID ./errors.log --stream stderr --append
+o cmds job write JOB_ID -         # binary-safe stdout
+o cmds job yank JOB_ID            # stdout to the clipboard
+o cmds job write JOB_ID --stream stderr --register a
+o cmds job write JOB_ID --register a --append
+o cmds job open JOB_ID --with TextEdit
+```
+
+The stream selector is `stdout`, `stderr` or retained `stdin`. File and
+stdout transfers preserve binary bytes. Clipboard and register transfers
+require UTF-8. The three destinations `output`, `clipboard` and `register`
+are mutually exclusive; append requires a file or a named register.
+`job open` uses the generic opener table, and `--with` names an actual
+external application. In-host page/viewer routing needs a live host callback;
+a fresh host subprocess cannot change the invoking TUI's page.
+
+Named register output uses the framework's `register set`/`append` verbs.
+Mounted calls go through the sanctioned host transport, not a peer binary.
+Durability and live-host refresh require the shared ochazuke register
+persistence fix; `register.persist=false` opts out after that fix is present.
+The app accepts only named registers `a-z` and uppercase aliases. Clipboard
+output is a separate explicit destination.
+
+The shared input/output kinds are not part of published ochazuke v0.122.1.
+Until their adoption, use `import --file` or `--command` and the explicit
+output parameters above. The handlers take readers and writers so adopting
+the shared kinds does not require another stream parser.
+
+`cmd show` and `job show` are the library's standard record forms in the UI
+and structured records on the CLI. Their old viewers remain registered as
+`cmd show-script` and `job show-output`; the `v` binding follows show-script.
+The binary entry points are registered as `cmd browse`, `cmd pick`,
+`cmd shell-init` and `cmd serve`. Bare `view`, `pick`, `shell-init` and legacy
+`mcp` call those actions. The family gateway uses the generic `mcp serve`
+catalog interface, which reaches every action subject to ordinary rights.
+
+The app's setup items also travel in its catalog. `cmd setup-list`,
+`cmd setup-check`, `cmd setup-show`, `cmd setup-install --dry-run` and the
+other `setup-*` actions reuse the shared setup operations, parameters,
+confirmations and filesystem engine. Bare `setup` forms call the same actions.
+No separate installer or instruction-file writer exists in the app.
 
 ## Setup: the agents' note
 
@@ -226,10 +304,11 @@ Runs list oldest first, newest at the bottom, independently of `list.order`.
 Their numbers refer to the global run list, including when filtered by command;
 numbers change after pruning/deletion. A stable `run/ID`, exact ID or unique ID
 prefix also works. Ambiguous prefixes fail without executing anything.
-`job list NAME|N` filters by command; `job show/in/out/err/delete/rerun` accept
-`--job JOB` as well as a positional target. Machine clients can use `--json`.
-`rerun` requires the retained command and its script to exist. It uses the
-current script and records its current hash rather than restoring old code.
+`job list NAME|N` filters by command. `job show-output/in/out/err/delete/rerun`
+accept `--job JOB` as well as a positional target; standard `job show` takes
+the record ID. Machine clients can use `--json`. Saved-command reruns use
+the current script and its current hash. Unsaved-line reruns use the exact
+script retained in the job. Both preserve arguments, cwd and input provenance.
 
 The `stdin` metadata object records `kind` (`none`, `file`, `edited`), source
 `path`, full `bytes` and SHA-256 `sha`, plus `kept` and `truncated`. These describe
@@ -240,7 +319,8 @@ run by retention, deletion or clearing. Edited paths point to that private kept
 file. `job get --prop output` labels retained stdin and includes the metadata; `job in` prints
 the exact retained bytes, including binary input. JSON includes `input` and,
 when needed, `input_base64`; MCP `job_show` includes input text/base64 only up to
-64 KiB, always keeping source metadata. `jobs.keep=0` saves no input history.
+64 KiB, always keeping source metadata. `jobs.keep=0` disables saved-command
+history; unsaved lines still retain their only durable record.
 
 Records include the command ID and name at execution, SHA-256 script hash,
 arguments, effective cwd, UTC start/end, duration, exit code or signal, runner's
@@ -290,14 +370,15 @@ run list, then another Escape returns to the host. `history.keep-open=false`
 restores closing the list when a run opens. The backdrop selects that command.
 
 In mtm, `H` runs `cmd.history` as a foreground full-screen session and closing
-it returns to the host. `v` uses `cmd.show` (declared text), and Enter uses
+it returns to the host. `v` uses `cmd.show-script` (declared text), and Enter uses
 `cmd.run {show: true}` (`cmd run NAME --show`) to open captured stdout, stderr and exit status in the host's
 read-only viewer. `keys.text-results=false` disables automatic key-result
 viewers. Standalone Enter keeps its streaming terminal handoff through
 `cmd.run`; that verb, `cmd.edit` and `cmd.edit-stdin` publish `foreground: true`
 for hosts. `cmd.get` and `job.get` keep the structured answers (the script is the computed
 prop `script`, a job's labelled streams the computed prop `output`), while
-`job.show` returns labelled text. See [Family integration](docs/INTEGRATION.md).
+`job.show-output` returns labelled text. `cmd.show` and `job.show` open standard
+record forms in the UI. See [Family integration](docs/INTEGRATION.md).
 Hosted `g i` uses `cmd.run-file` with a required stdin path, so the host opens
 its shared file picker before showing the captured run. Standalone `g i`
 keeps its existing stdin picker and streaming execution. `cmd.rerun` (`g r`)
@@ -442,14 +523,15 @@ MCP lets agents leave commands for the owner:
 }
 ```
 
-The stdio server exposes `cmd_add`, `cmd_list`, `cmd_show`, `cmd_dismiss`,
-`cmd_undismiss`, `run_list` and `run_show` (`cmd_dismiss`/`cmd_undismiss` take
-`target`; dismissing is undoable, and reset is allowed through the CLI/catalog
-but remains absent from this curated MCP server). It has **no execution or run-deletion tools**. `cmd_add` requires `script` (empty is valid), and accepts
+The legacy stdio server exposes `cmd_add`, `cmd_list`, `cmd_show`, `cmd_dismiss`,
+`cmd_undismiss`, `job_list` and `job_show`. It keeps the old viewer results for
+`cmd_show` and `job_show`, independent of the standard `show` verbs.
+`cmd_dismiss`/`cmd_undismiss` take `target`. This curated server has no execution
+or deletion tools. The generic family MCP gateway discovers the full catalog.
+`cmd_add` requires `script` and accepts an empty script. It also accepts
 `name`, `desc`, `cwd`, `tags` and `author`. `cmd_list` takes optional `filter`;
-`cmd_show` takes `target` (a name, number as a string, or stable ID).
-`run_list` takes optional `command` (name, number or ID); `run_show` requires
-`run` (run number as a string, stable ID or unique prefix). Both are read-only.
+`cmd_show` takes `target`, a name, number or stable ID. `job_list` takes optional
+`command`; `job_show` requires `job`, a number, ID or unique prefix.
 MCP additions also stamp the initializing client's name when agent environment
 metadata is unavailable. Notifications receive no response; tool failures use
 MCP error content. Stdio uses newline-delimited JSON-RPC with initialize,

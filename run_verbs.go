@@ -38,14 +38,14 @@ func (a *App) verbs() []verbSpec {
 	for i := range runs {
 		runs[i].noun = "job"
 	}
-	return append(specs, runs...)
+	return append(append(specs, runs...), a.entrySpecs()...)
 }
 
 func (a *App) runSpecs() []verbSpec {
 	target := map[string]ochazuke.Parameter{"job": param("Job ID, unique prefix or global displayed number")}
-	return []verbSpec{
+	specs := []verbSpec{
 		{name: "list", description: "List runs, newest at the bottom; optionally filter by command", params: map[string]ochazuke.Parameter{"command": param("Command name, number or ID")}, positional: []string{"command"}, handler: a.listRuns, output: "run-table"},
-		{name: "show", description: "Read labelled run output in a text viewer", params: target, positional: []string{"job"}, handler: a.onRun(func(_ ochazuke.Ctx, r RunOutput) ochazuke.Result { return ochazuke.Done(runText(r)) }), text: true, output: "raw"},
+		{name: "show-output", description: "Read labelled run output in a text viewer", params: target, positional: []string{"job"}, handler: a.onRun(func(_ ochazuke.Ctx, r RunOutput) ochazuke.Result { return ochazuke.Done(runText(r)) }), text: true, output: "raw"},
 		{name: "out", description: "Print captured stdout bytes", params: target, positional: []string{"job"}, handler: a.onRun(func(_ ochazuke.Ctx, r RunOutput) ochazuke.Result { return ochazuke.Done(r) }), output: "run-out"},
 		{name: "in", description: "Print retained stdin bytes (may be truncated)", params: target, positional: []string{"job"}, handler: a.onRun(func(_ ochazuke.Ctx, r RunOutput) ochazuke.Result { return ochazuke.Done(r) }), output: "run-in"},
 		{name: "err", description: "Print captured stderr bytes", params: target, positional: []string{"job"}, handler: a.onRun(func(_ ochazuke.Ctx, r RunOutput) ochazuke.Result { return ochazuke.Done(r) }), output: "run-err"},
@@ -56,6 +56,7 @@ func (a *App) runSpecs() []verbSpec {
 		}), destructive: true},
 		{name: "rerun", foreground: true, description: "Execute the current saved script with the run's args, cwd and stdin", params: target, positional: []string{"job"}, handler: a.onRun(a.rerun), cli: a.rerunCLI},
 	}
+	return append(specs, a.jobFileSpecs()...)
 }
 
 func (a *App) onRun(fn func(ochazuke.Ctx, RunOutput) ochazuke.Result) ochazuke.AppHandler {
@@ -184,6 +185,9 @@ func (a *App) rerunLast(c ochazuke.Ctx, row Command) ochazuke.Result {
 }
 
 func (a *App) rerunCommand(r RunOutput) (Command, error) {
+	if r.Script != nil {
+		return Command{ID: r.CommandID, Name: r.CommandName, Cwd: r.Cwd, Line: r.Script}, nil
+	}
 	c, e := a.store.Resolve(r.CommandID, false)
 	c.Cwd = r.Cwd
 	return c, e
@@ -291,7 +295,7 @@ func (a *App) rerunRecorded(ctx context.Context, r RunOutput) error {
 
 func runStatus(r Run) string {
 	if r.Ended == nil {
-		return "unfinished"
+		return "running"
 	}
 	if r.Signal != "" {
 		return "signal " + r.Signal

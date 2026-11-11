@@ -33,34 +33,28 @@ func (a *App) runOrShow(c ochazuke.Ctx, row Command) ochazuke.Result {
 // reading rather than handing the terminal to the script. Even a failed
 // script has output worth reading. Storage/start failures remain errors.
 func (a *App) runView(c ochazuke.Ctx, row Command) ochazuke.Result {
-	in, err := a.openInput(ochazuke.StringArg(c.Args, "stdin", ""), "file")
-	if err != nil {
-		return ochazuke.Failed(err)
-	}
 	args := stringList(c.Args["args"])
 	limit := a.r.Settings().Int("jobs.max-bytes")
-	out, errOut := &cappedStream{limit: limit}, &cappedStream{limit: limit}
-	recorder := *a
-	recorder.out, recorder.errOut = out, errOut
-	runCtx, cancel := context.WithCancel(context.Background())
-	cmd := scriptCommand(runCtx, row, args)
-	cmd.Stdout, cmd.Stderr = out, errOut // also capture when recording is disabled
-	if in != nil {
-		cmd.Stdin = in.file
-	}
-	finish, err := recorder.prepareRun(cmd, row, args, "viewer", in)
-	if err != nil {
-		cancel()
-		in.close()
-		return ochazuke.Failed(err)
-	}
 	return ochazuke.Pending(func(ctx context.Context) (any, error) {
 		ctx, stopSignal := signal.NotifyContext(ctx, syscall.SIGTERM)
 		defer stopSignal()
+		in, err := a.openInput(ochazuke.StringArg(c.Args, "stdin", ""), "file")
+		if err != nil {
+			return nil, err
+		}
 		defer in.close()
-		stop := context.AfterFunc(ctx, cancel)
-		defer stop()
-		defer cancel()
+		out, errOut := &cappedStream{limit: limit}, &cappedStream{limit: limit}
+		recorder := *a
+		recorder.out, recorder.errOut, recorder.changed = out, errOut, nil
+		cmd := scriptCommand(ctx, row, args)
+		cmd.Stdout, cmd.Stderr = out, errOut
+		if in != nil {
+			cmd.Stdin = in.file
+		}
+		finish, err := recorder.prepareRun(cmd, row, args, "viewer", in)
+		if err != nil {
+			return nil, err
+		}
 		runErr := a.run(cmd)
 		if err := finish(runErr); err != nil {
 			return nil, err

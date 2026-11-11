@@ -33,13 +33,26 @@ type mcpTool struct {
 // The MCP surface is an explicit allowlist over the app's verb descriptions.
 // Execution is deliberately absent from both discovery and dispatch.
 func (a *App) tools() []mcpTool {
-	allowed := map[string][]string{"cmd.add": {"name", "desc", "script", "cwd", "tags", "author"}, "cmd.list": {"filter"}, "cmd.show": {"target"}, "cmd.dismiss": {"target"}, "cmd.undismiss": {"target"}, "job.list": {"command"}, "job.show": {"job"}}
+	allowed := []struct {
+		key, name string
+		params []string
+		required bool
+	}{
+		{"cmd.add", "cmd_add", []string{"name", "desc", "script", "cwd", "tags", "author"}, false},
+		{"cmd.list", "cmd_list", []string{"filter"}, false},
+		{"cmd.show-script", "cmd_show", []string{"target"}, true},
+		{"cmd.dismiss", "cmd_dismiss", []string{"target"}, true},
+		{"cmd.undismiss", "cmd_undismiss", []string{"target"}, true},
+		{"job.list", "job_list", []string{"command"}, false},
+		{"job.show-output", "job_show", []string{"job"}, true},
+	}
 	out := []mcpTool{}
 	for _, spec := range a.verbs() {
-		names, ok := allowed[spec.noun+"."+spec.name]
-		if !ok {
-			continue
-		}
+		for _, tool := range allowed {
+			if tool.key != spec.noun+"."+spec.name {
+				continue
+			}
+			names := tool.params
 		props := map[string]any{}
 		for _, name := range names {
 			p := spec.params[name]
@@ -53,10 +66,11 @@ func (a *App) tools() []mcpTool {
 		if spec.name == "add" {
 			schema["required"] = []string{"script"}
 		}
-		if spec.name == "show" || spec.name == "dismiss" || spec.name == "undismiss" {
+		if tool.required {
 			schema["required"] = names
 		}
-		out = append(out, mcpTool{Name: spec.noun + "_" + spec.name, Description: spec.description, InputSchema: schema})
+		out = append(out, mcpTool{Name: tool.name, Description: spec.description, InputSchema: schema})
+		}
 	}
 	return out
 }

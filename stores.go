@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"slices"
 
 	"ofam.dev/ochazuke"
@@ -63,6 +64,7 @@ func cmdThing(c Command) (ochazuke.Thing, error) {
 	}
 	t["archived"] = c.Deleted
 	t["script_path"] = c.Path
+	t["path"] = filepath.Dir(c.Path)
 	if c.Tags == nil {
 		t["tags"] = []string{}
 	}
@@ -150,7 +152,7 @@ func (a *App) jobProps() []ochazuke.PropSpec {
 		{Name: "exit_code", ReadOnly: true, Parameter: ochazuke.Parameter{Type: ochazuke.SettingInteger, Description: "The exit status"}},
 		text("signal", "The signal that ended it"),
 		text("source", "Where the run came from"),
-		{Name: "output", ReadOnly: true, Parameter: ochazuke.Parameter{Type: "string", Description: "Labelled stdin, stdout and stderr with the metadata (job show reads it in a viewer)"},
+		{Name: "output", ReadOnly: true, Parameter: ochazuke.Parameter{Type: "string", Description: "Labelled stdin, stdout and stderr with the metadata (job show-output reads it in a viewer)"},
 			Read: func(_ ochazuke.Ctx, t ochazuke.Thing) (any, error) {
 				r, err := a.store.ReadRun(fmt.Sprint(t["id"]))
 				if err != nil {

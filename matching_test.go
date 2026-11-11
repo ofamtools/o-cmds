@@ -51,7 +51,7 @@ func TestCommandMatchingAmbiguousNumberedInDisplayOrder(t *testing.T) {
 }
 
 func TestCommandMatchingEveryTargetVerb(t *testing.T) {
-	for _, verb := range []string{"show", "run", "yank", "edit", "delete", "pin", "unpin", "star"} {
+	for _, verb := range []string{"show-script", "run", "yank", "edit", "delete", "pin", "unpin", "star"} {
 		t.Run(verb, func(t *testing.T) {
 			s := fixture(t)
 			t.Setenv("O_CMDS_CLIPBOARD", "cat >/dev/null")
@@ -84,7 +84,7 @@ func TestCommandMatchingEveryTargetVerb(t *testing.T) {
 }
 
 func TestCommandMatchingAmbiguityNeverActs(t *testing.T) {
-	for _, verb := range []string{"show", "run", "yank", "edit", "delete", "pin", "unpin", "star"} {
+	for _, verb := range []string{"show-script", "run", "yank", "edit", "delete", "pin", "unpin", "star"} {
 		t.Run(verb, func(t *testing.T) {
 			s := fixture(t)
 			addCommand(t, s, "play-one", "one")

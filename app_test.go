@@ -40,7 +40,7 @@ func TestSetLabelRequiresAName(t *testing.T) {
 	if _, e := invoke(t, s, "", "cmd", "set", "keep", "--props", `{"@label":""}`); e == nil {
 		t.Fatal("an empty name was written")
 	}
-	if out, e := invoke(t, s, "", "cmd", "show", "keep"); e != nil || out != "true" {
+	if out, e := invoke(t, s, "", "cmd", "show-script", "keep"); e != nil || out != "true" {
 		t.Fatalf("%q %v", out, e)
 	}
 }
@@ -97,13 +97,13 @@ func TestCLIAddListShowRenameDeleteUndo(t *testing.T) {
 	if strings.Index(out, "older") < 0 || strings.Index(out, "newer") < strings.Index(out, "older") {
 		t.Fatalf("order:\n%s", out)
 	}
-	for _, args := range [][]string{{"cmd", "show", "1"}, {"cmd", "show", "--target", "cmd/" + first.ID}} {
+	for _, args := range [][]string{{"cmd", "show-script", "1"}, {"cmd", "show-script", "--target", "cmd/" + first.ID}} {
 		out, e = invoke(t, s, "", args...)
 		if e != nil || out != "printf 'old\\n'\n" {
 			t.Fatalf("show=%q %v", out, e)
 		}
 	}
-	out, e = invoke(t, s, "", "cmd", "show", "--target", "cmd/"+first.ID, "--json", "{}", "--yes")
+	out, e = invoke(t, s, "", "cmd", "show-script", "--target", "cmd/"+first.ID, "--json", "{}", "--yes")
 	if e != nil || !json.Valid([]byte(out)) {
 		t.Fatalf("host show=%q %v", out, e)
 	}
@@ -175,7 +175,7 @@ func TestCLISettingsAndPin(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	out, e := invoke(t, s, "", "cmd", "show", "1")
+	out, e := invoke(t, s, "", "cmd", "show-script", "1")
 	if e != nil || out != "echo new" {
 		t.Fatalf("order setting=%q %v", out, e)
 	}
@@ -220,7 +220,7 @@ func TestCatalogAndStandalonePage(t *testing.T) {
 		}
 	}
 	for key, want := range map[string]string{
-		"enter": "cmd.run", "v": "cmd.show", "H": "cmd.history",
+		"enter": "cmd.run", "v": "cmd.show-script", "H": "cmd.history",
 		"y": "cmd.yank", "e": "cmd.edit", "d d": "cmd.delete",
 	} {
 		if got := keys[key]; got != want {

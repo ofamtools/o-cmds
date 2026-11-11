@@ -33,7 +33,7 @@ func TestScriptViewDoesNotChangeSourceResults(t *testing.T) {
 	t.Setenv("O_CMDS_CLIPBOARD", "cat >/dev/null")
 	source := "\tif true; then\n    printf 'two  spaces'\n\nfi\n\n"
 	addCommand(t, s, "source", source)
-	for _, args := range [][]string{{"cmd", "show", "source"}, {"cmd", "yank", "source"}, {"pick", "source"}} {
+	for _, args := range [][]string{{"cmd", "show-script", "source"}, {"cmd", "yank", "source"}, {"pick", "source"}} {
 		out, e := invoke(t, s, "", args...)
 		if e != nil || out != source {
 			t.Fatalf("%q output=%q error=%v", args, out, e)

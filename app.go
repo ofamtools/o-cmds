@@ -41,6 +41,7 @@ type verbSpec struct {
 	positional        []string
 	handler           ochazuke.AppHandler
 	rows              bool
+	creates           bool
 	many              bool
 	destructive       bool
 	confirm, agent    string
@@ -134,6 +135,9 @@ func newApp(s *Store, in io.Reader, out, errOut io.Writer) (*App, error) {
 		if spec.rows {
 			b.Rows(spec.noun).Fetch().Quiet()
 		}
+		if spec.creates {
+			b.Creates()
+		}
 		if spec.many {
 			b.Many()
 		}
@@ -172,7 +176,7 @@ func newApp(s *Store, in io.Reader, out, errOut io.Writer) (*App, error) {
 		Bind("g i", ochazuke.Do("cmd.run-file").Guard("stdin-ui")).
 		Bind("g e", ochazuke.Do("cmd.edit-stdin").Guard("stdin-ui")).
 		Bind("g r", ochazuke.Do("cmd.rerun").Guard("history-ui")).
-		Bind("v", ochazuke.Do("cmd.show")).
+		Bind("v", ochazuke.Do("cmd.show-script")).
 		Bind("H", ochazuke.Do("cmd.history").Guard("history-ui")).
 		Bind("y", ochazuke.Do("cmd.yank")).
 		Bind("e", ochazuke.Do("cmd.edit")).
@@ -236,18 +240,18 @@ func (a *App) specs() []verbSpec {
 	// plain, since the marks are its source.
 	focused := target
 	focused.From = ochazuke.SourceRow + ":id"
-	return []verbSpec{
-		{name: "show", description: "Read the command script in a text viewer", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.view), text: true, output: "raw"},
+	specs := []verbSpec{
+		{name: "show-script", description: "Read the command script in a text viewer", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.view), text: true, output: "raw"},
 		{name: "run-file", description: "Choose a stdin file and read the captured run", params: map[string]ochazuke.Parameter{"target": focused, "stdin": {Type: "path", Path: ochazuke.PathFile, Required: true, Description: "File to use as stdin"}}, positional: []string{"target", "stdin"}, handler: a.on(a.runView), text: true, slot: "run", timeout: 15 * time.Minute, enabled: "view.stdin"},
 		{name: "history", description: "Open full-screen command history on the terminal", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.history), foreground: true, cli: a.historyCLI, enabled: "view.jobs"},
-		{name: "stdin-file", description: "Choose a file to run with as stdin", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.stdinFile), enabled: "view.stdin"},
+		{name: "stdin-file", description: "Choose a file to run with as stdin", params: map[string]ochazuke.Parameter{"target": focused, "stdin": fileParam("File to use as stdin")}, positional: []string{"target", "stdin"}, handler: a.on(a.stdinFile), text: true, slot: "run", timeout: 15 * time.Minute, enabled: "view.stdin"},
 		{name: "edit-stdin", foreground: true, description: "Edit an empty buffer and run with it as stdin", params: map[string]ochazuke.Parameter{"target": focused, "args": {Type: "array"}}, positional: []string{"target"}, handler: a.on(a.editStdin), enabled: "view.stdin", cli: func(ctx context.Context, args []string) error {
 			return a.runCLI(ctx, append([]string{"--edit-stdin"}, args...))
 		}},
 		{name: "rerun", foreground: true, description: "Repeat the latest run with its original args, cwd and stdin", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.rerunLast), cli: a.rerunLastCLI, enabled: "view.jobs"},
 		{name: "jobs", description: "List a command's jobs (its run history), newest at the bottom", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.commandRuns), output: "run-table"},
 		{name: "jobs-clear", description: "Remove a command's captured run history", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.clearRuns), destructive: true},
-		{name: "add", description: "Record a shell script, including an empty or unassociated one", params: map[string]ochazuke.Parameter{"name": param("Name; duplicates receive a suffix"), "desc": param("Description"), "file": param("Read script from file; otherwise script or stdin"), "script": param("Script text"), "cwd": param("Working directory; absence is allowed"), "tags": {Type: "array", Description: "Tags"}, "author": param("Author name; defaults to agent environment or owner")}, handler: a.add},
+		{name: "add", creates: true, description: "Record a shell script, including an empty or unassociated one", params: map[string]ochazuke.Parameter{"name": param("Name; duplicates receive a suffix"), "desc": param("Description"), "file": fileParam("Read script from a file, or - for stdin"), "script": param("Script text"), "cwd": dirParam("Working directory; absence is allowed"), "tags": {Type: "array", Description: "Tags"}, "author": param("Author name; defaults to agent environment or owner")}, handler: a.add},
 		{name: "list", description: "List numbered commands; newest at the bottom by default", params: map[string]ochazuke.Parameter{"filter": param("Match name, description or tags")}, handler: a.list, rows: true, output: "table"},
 		{name: "run", text: true, slot: "run", timeout: 15 * time.Minute, description: "Run with sh in the recorded cwd, streaming output and preserving exit status", params: map[string]ochazuke.Parameter{"target": focused, "args": {Type: "array", Description: "Script arguments (CLI also accepts -- args...)"}, "stdin": {Type: "path", Path: ochazuke.PathFile, Description: "File to use as stdin"}, "edit-stdin": {Type: "boolean", Description: "Edit an empty stdin buffer"}, "show": {Type: "boolean", Description: "Capture both streams and read stdout, stderr and the exit status in a viewer instead of streaming to the terminal"}, "stdin-kind": {Type: "string", Enum: []string{"file", "edited"}, Description: "Input provenance; edited retains input for reruns"}}, positional: []string{"target"}, handler: a.on(a.runOrShow), cli: a.runLeaf},
 		{name: "yank", description: "Copy the script to the clipboard; answers the script", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.yank), output: "script"},
@@ -261,6 +265,7 @@ func (a *App) specs() []verbSpec {
 		{name: "unpin", description: "Unpin a command", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.pin(false))},
 		{name: "star", description: "Toggle a command's pin", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.star)},
 	}
+	return append(specs, a.fileSpecs()...)
 }
 
 func (a *App) newestFirst() bool { return a.r.Settings().String("list.order") == "newest-first" }
@@ -329,27 +334,17 @@ func stringList(v any) []string {
 }
 
 func (a *App) add(c ochazuke.Ctx) ochazuke.Result {
-	script, hasScript := c.Args["script"].(string)
-	if file := ochazuke.StringArg(c.Args, "file", ""); file != "" {
-		b, e := os.ReadFile(file)
-		if e != nil {
-			return ochazuke.Failed(e)
+	if _, hasScript := c.Args["script"]; !hasScript || ochazuke.StringArg(c.Args, "file", "") != "" {
+		if a.tui && ochazuke.StringArg(c.Args, "file", "") == "" {
+			return ochazuke.Pending(func(context.Context) (any, error) {
+				return a.readScript(strings.NewReader(""), c.Args, "text", "")
+			}).Then(func(ochazuke.Ctx, any, error) { a.refresh() })
 		}
-		script = string(b)
-	} else if !hasScript && !a.tui {
-		b, e := io.ReadAll(a.in)
-		if e != nil {
-			return ochazuke.Failed(e)
-		}
-		script = string(b)
+		return a.importScript(c)
 	}
-	author := stampAuthor(os.Getenv, "owner")
-	if name := ochazuke.StringArg(c.Args, "author", ""); name != "" {
-		author.Name = name
-	}
-	row, e := a.store.Add(Add{Name: ochazuke.StringArg(c.Args, "name", ""), Description: ochazuke.StringArg(c.Args, "desc", ""), Script: script, Cwd: ochazuke.StringArg(c.Args, "cwd", ""), Tags: stringList(c.Args["tags"]), Author: author})
-	a.refresh()
-	return result(row, e)
+	return ochazuke.Pending(func(context.Context) (any, error) {
+		return a.readScript(strings.NewReader(ochazuke.StringArg(c.Args, "script", "")), c.Args, "text", "")
+	}).Then(func(ochazuke.Ctx, any, error) { a.refresh() })
 }
 
 func age(at, now time.Time) string {
@@ -412,6 +407,8 @@ func (a *App) rows(filter string) ([]ocli.Row, error) {
 			return nil, e
 		}
 		data["script"] = text
+		data["script_path"] = c.Path
+		data["path"] = a.store.Dir
 		data["detail_md"] = scriptMarkdown(text, c.Path)
 		data["age"] = age(c.Created, now)
 		if run, ok := lastRuns[c.ID]; ok {

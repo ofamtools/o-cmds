@@ -193,7 +193,7 @@ func TestRunHistoryCLIAndMCP(t *testing.T) {
 	}{
 		{[]string{"cmd", "jobs", "rep"}, "exit 0"},
 		{[]string{"job", "list", "replay"}, r.ID},
-		{[]string{"job", "show", "1"}, "--- stderr ---\nerr"},
+		{[]string{"job", "show-output", "1"}, "--- stderr ---\nerr"},
 		{[]string{"job", "out", r.ID[:25]}, cwd + ":original arg"},
 		{[]string{"job", "err", "run/" + r.ID}, "err"},
 	} {
