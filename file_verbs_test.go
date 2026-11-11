@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
 	"ofam.dev/ochazuke"
 )
 
@@ -257,13 +258,17 @@ func TestStoredShowsUseStandardFormsAndKeepViewers(t *testing.T) {
 		t.Fatal(err)
 	}
 	model := ochazuke.NewModel(a.r)
+	model.Width, model.Height = 160, 48
 	model.Init()
 	defer a.r.Sourced("palette")()
 	if _, err := a.r.Execute(ochazuke.Request{Noun: "cmd", Verb: "show", Args: ochazuke.Arguments{"id": row.ID}}); err != nil {
 		t.Fatal(err)
 	}
-	if a.r.Page != ochazuke.IndexPageID("cmd") || a.r.ShowFormOf(a.r.Page+"/form") == nil {
-		t.Fatalf("show did not open the record form: %s", a.r.Page)
+	frame := strings.ToLower(ansi.Strip(model.View().Content))
+	for _, visible := range []string{"form-script", "pinned", "archived"} {
+		if !strings.Contains(frame, visible) {
+			t.Fatalf("show did not render the record field %q:\n%s", visible, frame)
+		}
 	}
 	if out, err := invoke(t, s, "", "cmd", "show-script", row.ID); err != nil || out != "printf unchanged" {
 		t.Fatalf("viewer changed: %q %v", out, err)
