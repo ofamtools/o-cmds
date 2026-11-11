@@ -2,6 +2,7 @@
 
 ## v0.5.0
 
+- Requires ochazuke v0.124.1: a key on a focused row acts on it again instead of asking for its subject, and the path ask steps its sources with `ctrl+o` again.
 - Requires published ochazuke v0.124.0 and oden v0.5.1. Command and job paths
   are typed files or directories. Scripts open as files, never as executions;
   the inherited reveal, yank-path and open-with actions cover their paths.
