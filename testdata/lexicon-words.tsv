@@ -769,6 +769,7 @@ settings-tab	noun	seed
 setup	action+noun	seed	
 setup-check	action	tool-actions-cmds-git
 setup-get	action	tool-actions-cmds-git
+setup-history	action	tool-actions-cmds-git
 setup-install	action	tool-actions-cmds-git
 setup-list	action	tool-actions-cmds-git
 setup-open	action	tool-actions-cmds-git
