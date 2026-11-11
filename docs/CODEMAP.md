@@ -45,7 +45,9 @@
   with shebang/extension language and outfenced backticks.
 * `script_view.go`: script detail projection, numbered whitespace-preserving
   rendering and a read-only modal using ochazuke detail windows and bindings.
-* `pick.go`: same-page selection bindings, stdout script result, cancellation.
+* `pick.go`: one registered picker handler for direct script reads and active
+  selection, same-page bindings, stdout result and cancellation. Mounting the
+  picker changes its session state/bindings, never replaces its operation.
 * `shell_init.go`: optional Bash/Zsh function generation and name validation.
 * `mcp.go`: curated seven-tool JSON-RPC stdio server, registry-derived schemas;
   command add/list/script-view/dismiss/undismiss and read-only job list/captures,

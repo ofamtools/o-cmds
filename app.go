@@ -26,6 +26,7 @@ type App struct {
 	out, errOut io.Writer
 	run         Runner
 	tui         bool
+	picking     *picker
 	changed     func()
 	stdinNotice ochazuke.NoticeID
 	// runCols is view.job-columns as read at start: the declared columns

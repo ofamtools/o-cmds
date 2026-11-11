@@ -31,12 +31,7 @@ func (a *App) entrySpecs() []verbSpec {
 			}
 			return runTUI(a, words)
 		}},
-		{noun: "cmd", name: "pick", description: "Choose a script without executing it", foreground: true, params: map[string]ochazuke.Parameter{"target": commandTarget()}, positional: []string{"target"}, handler: func(c ochazuke.Ctx) ochazuke.Result {
-			if ochazuke.StringArg(c.Args, "target", "") != "" {
-				return a.on(a.view)(c)
-			}
-			return a.foregroundSelf("cmd", "pick")
-		}, cli: func(ctx context.Context, words []string) error {
+		{noun: "cmd", name: "pick", description: "Choose a script without executing it", foreground: true, params: map[string]ochazuke.Parameter{"target": commandTarget()}, positional: []string{"target"}, handler: a.pickCommand, cli: func(ctx context.Context, words []string) error {
 			if machineArgs(words) {
 				return a.shell().Run(ctx, append([]string{"cmd", "pick"}, words...))
 			}

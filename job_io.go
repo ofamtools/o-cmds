@@ -56,20 +56,8 @@ func (a *App) writeJob(c ochazuke.Ctx) ochazuke.Result {
 	path := ochazuke.StringArg(c.Args, "output", "")
 	clip, _ := c.Args["clipboard"].(bool)
 	appendOutput, _ := c.Args["append"].(bool)
-	sinks := 0
-	for _, selected := range []bool{register != "", path != "", clip} {
-		if selected {
-			sinks++
-		}
-	}
-	if sinks > 1 {
-		return ochazuke.Failed(errors.New("choose only one destination: output, clipboard or register"))
-	}
-	if appendOutput && (clip || (path == "" && register == "") || path == "-") {
-		return ochazuke.Failed(errors.New("append needs a file or named register"))
-	}
-	if register != "" && (len(register) != 1 || !((register[0] >= 'a' && register[0] <= 'z') || (register[0] >= 'A' && register[0] <= 'Z'))) {
-		return ochazuke.Failed(errors.New("output register must be a named register a-z (uppercase aliases allowed); use clipboard for the system clipboard"))
+	if err := validateOutputSink(path, register, clip, appendOutput); err != nil {
+		return ochazuke.Failed(err)
 	}
 	localRegister := false
 	return ochazuke.Pending(func(ctx context.Context) (any, error) {
@@ -115,6 +103,25 @@ func (a *App) writeJob(c ochazuke.Ctx) ochazuke.Result {
 		_, err = a.r.ExecuteAt(c.Context, registerRequest(register, string(value.(streamAnswer).Data), appendOutput))
 		return nil, streamAnswer{}, err
 	})
+}
+
+func validateOutputSink(path, register string, clip, appendOutput bool) error {
+	sinks := 0
+	for _, selected := range []bool{register != "", path != "", clip} {
+		if selected {
+			sinks++
+		}
+	}
+	if sinks > 1 {
+		return errors.New("choose only one destination: output, clipboard or register")
+	}
+	if appendOutput && (clip || (path == "" && register == "") || path == "-") {
+		return errors.New("append needs a file or named register")
+	}
+	if register != "" && (len(register) != 1 || !((register[0] >= 'a' && register[0] <= 'z') || (register[0] >= 'A' && register[0] <= 'Z'))) {
+		return errors.New("output register must be a named register a-z (uppercase aliases allowed); use clipboard for the system clipboard")
+	}
+	return nil
 }
 
 func streamExtension(name string) string {

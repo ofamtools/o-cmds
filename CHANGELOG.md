@@ -18,7 +18,9 @@
   `job open` uses the generic opener or an explicitly named external application.
 - Registered the binary's page, picker, shell-function and legacy MCP entry
   points as `cmd browse`, `cmd pick`, `cmd shell-init` and `cmd serve`.
-  The old bare forms remain adapters. Existing actions remain available.
+  The old bare forms remain adapters. The picker reuses one registered handler
+  for direct and interactive selection without redefining an application verb.
+  Existing actions remain available.
 - Durable register transfers through a mounted host require the shared
   ochazuke named-register persistence fix. The dependency manifest stays on
   the published release until that fix is released.

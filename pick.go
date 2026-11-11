@@ -24,15 +24,8 @@ func mountPicker(a *App) (*picker, error) {
 		return nil, e
 	}
 	pick := &picker{page: p}
-	a.r.Define("cmd").Verb("pick", a.on(func(_ ochazuke.Ctx, c Command) ochazuke.Result {
-		script, e := a.store.Script(c)
-		if e != nil {
-			return ochazuke.Failed(e)
-		}
-		pick.script, pick.chosen = script, true
-		a.r.Quit = true
-		return ochazuke.Done(nil)
-	}), "Choose the command and exit with its script").Mode("normal").Bind("enter", ochazuke.Do("cmd.pick"))
+	a.picking = pick
+	a.r.Define("cmd").Mode("normal").Bind("enter", ochazuke.Do("cmd.pick"))
 	cancel := ochazuke.Do("app.quit").Guard("no-modal").Captured()
 	cancel.Instance = "app"
 	cancel.Keys = "esc"
@@ -46,6 +39,24 @@ func mountPicker(a *App) (*picker, error) {
 		return tea.ExecProcess(msg.Cmd, msg.Done)
 	}
 	return pick, nil
+}
+
+func (a *App) pickCommand(c ochazuke.Ctx) ochazuke.Result {
+	if a.picking == nil {
+		if ochazuke.StringArg(c.Args, "target", "") != "" {
+			return a.on(a.view)(c)
+		}
+		return a.foregroundSelf("cmd", "pick")
+	}
+	return a.on(func(_ ochazuke.Ctx, row Command) ochazuke.Result {
+		script, err := a.store.Script(row)
+		if err != nil {
+			return ochazuke.Failed(err)
+		}
+		a.picking.script, a.picking.chosen = script, true
+		a.r.Quit = true
+		return ochazuke.Done(nil)
+	})(c)
 }
 
 func (p *picker) writeSelection(out io.Writer) error {
@@ -69,16 +80,7 @@ func (a *App) pickCLI(args []string) error {
 		return errors.New("usage: o-cmds pick [NAME|NUMBER]")
 	}
 	if fs.NArg() == 1 {
-		c, e := a.store.Resolve(fs.Arg(0), a.newestFirst())
-		if e != nil {
-			return e
-		}
-		script, e := a.store.Script(c)
-		if e != nil {
-			return e
-		}
-		_, e = io.WriteString(a.out, script)
-		return e
+		return a.verbCLI(a.shell(), verbSpec{noun: "cmd", name: "pick", output: "raw"}, []string{fs.Arg(0)})
 	}
 	out := a.out
 	// Route every in-process operation to the UI stream while picking. Only
@@ -89,6 +91,7 @@ func (a *App) pickCLI(args []string) error {
 	if e != nil {
 		return e
 	}
+	defer func() { a.picking = nil }()
 	if _, e = tea.NewProgram(p.page, tea.WithInput(a.in), tea.WithOutput(a.errOut)).Run(); e != nil {
 		return e
 	}

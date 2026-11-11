@@ -7,6 +7,7 @@ about-page	noun	seed
 about-row	noun	seed	
 about-state	noun	seed	
 accept	action	seed	
+act	action	yes	act on the focused thing: pick one of its verbs (focus.act)
 action	noun	seed	
 action-item	noun	seed	
 actions	noun	seed	plural
@@ -96,6 +97,7 @@ chip-toggle	action	seed
 choices	relation	seed	
 choose	action	seed	
 choose-column	action	seed	
+columns	action	seed
 choose-move	action	seed	
 choose-pane	action	seed	
 choose-status	action	seed	
@@ -325,7 +327,9 @@ form-chip	noun	lx4
 form-chips	noun	seed	
 form-choice	noun	seed	
 form-field	noun	seed	
+form-item	noun	yes	pp-library
 form-option	noun	seed	
+form-read-only	noun	yes	pp-library
 form-suggest	noun	seed	
 form-text	noun	seed	
 format	prop	seed	
@@ -340,6 +344,7 @@ goto	action	seed
 grid	noun	seed	
 group	action+prop	seed	
 group-clear	action	seed	
+group-fold	action	yes	fold or unfold a collection group
 grow	action	seed	
 guard	noun	seed	
 harness	noun+prop	seed	
@@ -387,6 +392,16 @@ into	action+prop	seed
 inventory	namespace+noun	seed	
 invert	action	seed	
 invert-condition	action	seed	
+item-add	action	yes	pp-library: list field rows (record_list.go)
+item-delete	action	yes	pp-library: list field rows (record_list.go)
+item-edit	action	yes	pp-library: list field rows (record_list.go)
+item-first	action	yes	pp-library: list field rows (record_list.go)
+item-last	action	yes	pp-library: list field rows (record_list.go)
+item-move-down	action	yes	pp-library: list field rows (record_list.go)
+item-move-up	action	yes	pp-library: list field rows (record_list.go)
+item-next	action	yes	pp-library: list field rows (record_list.go)
+item-previous	action	yes	pp-library: list field rows (record_list.go)
+item-yank	action	yes	pp-library: list field rows (record_list.go)
 job	noun+prop	seed	
 jobs	prop	seed	
 json	namespace+prop	seed	
@@ -480,6 +495,7 @@ next-missing	action	seed
 next-row	action	seed	
 next-run	prop	seed	
 next-same	action	seed	
+next-scope	action	seed
 next-source	action	seed	
 normal	action	seed	
 note	action+noun+prop	seed	
@@ -491,6 +507,7 @@ notify	prop	seed
 notify-due	action	seed	
 notify-status	prop	seed	
 noun	action+noun+prop	seed	
+noun-browser	noun	seed
 nouns	noun+prop	seed	
 observed_at	prop	seed	
 ochazuke	namespace	seed	
@@ -506,8 +523,10 @@ open-json	action	seed
 open-notes	action	seed	
 open-result-json	action	seed	
 open-transcript	action	seed	
+open-with	action	seed
 open_notes	prop	seed	
 open_tasks	prop	seed	
+opener	noun	yes	the opener table (open.openers) and the OS opener
 opensPage	prop	seed	
 operation	noun	lx4	
 operations	noun	seed	plural
@@ -591,6 +610,7 @@ previous-class	action	seed
 previous-kind	action	seed	
 previous-link	action	seed	
 previous-same	action	seed	
+previous-scope	action	seed
 previous-source	action	seed	
 privacy	prop	seed	
 private	prop	seed	
@@ -767,6 +787,7 @@ shape	prop	seed
 shell-init	action	tool-actions-cmds-git
 short_sha	prop	seed	
 show	action	seed	
+show-archived	action	seed
 show-output	action	tool-actions-cmds-git
 show-script	action	tool-actions-cmds-git
 show-section	action	seed	
@@ -932,4 +953,5 @@ move-down	action	seed	ochazuke v0.110
 move-up	action	seed	ochazuke v0.110
 referrer	noun	seed	ochazuke v0.110 Referrers
 related	noun	seed	ochazuke v0.110 related sections
+relation-kind	noun	yes	the declared rules of a relation kind (ochazuke.relation-kind)
 related-section	noun	seed	ochazuke v0.110 related sections
