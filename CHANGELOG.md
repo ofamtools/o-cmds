@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.5.0
 
 - Requires published ochazuke v0.124.0 and oden v0.5.1. Command and job paths
   are typed files or directories. Scripts open as files, never as executions;
