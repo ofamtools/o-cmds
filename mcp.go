@@ -63,9 +63,6 @@ func (a *App) tools() []mcpTool {
 				props[name] = field
 			}
 			schema := map[string]any{"type": "object", "properties": props, "additionalProperties": false}
-			if spec.name == "add" {
-				schema["required"] = []string{"script"}
-			}
 			if tool.required {
 				schema["required"] = names
 			}
@@ -144,8 +141,9 @@ func (a *App) callTool(name string, raw json.RawMessage, client string) any {
 		if e := decode(&p); e != nil {
 			return toolContent(nil, e)
 		}
-		if p.Script == nil {
-			return toolContent(nil, fmt.Errorf("script is required; an empty script is allowed"))
+		script := ""
+		if p.Script != nil {
+			script = *p.Script
 		}
 		author := stampAuthor(os.Getenv, client)
 		if p.Author != "" {
@@ -154,7 +152,7 @@ func (a *App) callTool(name string, raw json.RawMessage, client string) any {
 		if author.Harness == "" {
 			author.Harness = client
 		}
-		c, e := a.store.Add(Add{Name: p.Name, Description: p.Desc, Script: *p.Script, Cwd: p.Cwd, Tags: p.Tags, Author: author})
+		c, e := a.store.Add(Add{Name: p.Name, Description: p.Desc, Script: script, Cwd: p.Cwd, Tags: p.Tags, Author: author})
 		return toolContent(c, e)
 	case "cmd_list":
 		var p struct {

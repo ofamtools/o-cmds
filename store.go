@@ -242,7 +242,8 @@ func (s *Store) records(includeArchived bool) (out []Command, err error) {
 }
 
 func uniqueName(name string, rows []Command, except string) string {
-	if strings.TrimSpace(name) == "" {
+	unnamed := strings.TrimSpace(name) == ""
+	if unnamed {
 		name = "command"
 	}
 	used := map[string]bool{}
@@ -252,7 +253,12 @@ func uniqueName(name string, rows []Command, except string) string {
 		}
 	}
 	base := name
-	for n := 2; used[name]; n++ {
+	n := 2
+	if unnamed {
+		// A missing name is recorded as the first free command-N, never refused.
+		name, n = base+"-1", 2
+	}
+	for ; used[name]; n++ {
 		name = base + "-" + strconv.Itoa(n)
 	}
 	return name

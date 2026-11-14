@@ -133,7 +133,7 @@ func newApp(s *Store, in io.Reader, out, errOut io.Writer) (*App, error) {
 			b.Positional(spec.positional...)
 		}
 		if spec.rows {
-			b.Rows(spec.noun).Fetch().Quiet()
+			b.Rows(spec.noun).Fetch().Quiet().Table()
 		}
 		if spec.creates {
 			b.Creates()

@@ -119,7 +119,7 @@ func TestStoreRenameDeleteUndoAndEdit(t *testing.T) {
 func TestStoreRecordFirstAndUnassociated(t *testing.T) {
 	s := fixture(t)
 	c := addCommand(t, s, "", "")
-	if c.Name != "command" {
+	if c.Name != "command-1" {
 		t.Fatalf("name=%q", c.Name)
 	}
 	// Interrupted metadata writes still leave a discoverable script.

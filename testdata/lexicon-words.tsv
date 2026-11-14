@@ -958,3 +958,11 @@ relation-kind	noun	yes	the declared rules of a relation kind (ochazuke.relation-
 related-section	noun	seed	ochazuke v0.110 related sections
 thing	noun	ua11	the registered thing walk graph picker
 walk	action	ua11	follow a thing's values and relations in a picker
+bind-start	action	seed	
+bind-finish	action	seed	
+bind-drop	action	seed	
+bind-literal	action	seed	
+bind-cancel	action	seed	
+look	action	yes	och-rail-focus: ochazuke.rail.look sets the rail's look (rail.look: full or float)
+rail	noun	yes	och-rail-focus: the rail region beside a page's main area (ochazuke.rail)
+resize	action	yes	och-rail-focus: ochazuke.rail.resize sets the rail's width (rail.width)

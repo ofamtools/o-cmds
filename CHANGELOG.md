@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Changed: requires ochazuke v0.137.0.
+- Changed: `cmd add` has one record-first rule on every route: a missing name is recorded as the first free `command-N` (was `command`, then `command-2`), an empty script is saved, and the MCP `cmd_add` no longer requires `script`.
+- Changed: `cmd list` declares a table for a person at a terminal (`.Table()`, `cli.tty-format`); a pipe still gets JSON.
+- Added: `TestNoNewRefusals` (ochazuke's refusecheck) with today's baseline, `testdata/refusecheck.txt`.
+
 ## v0.5.0
 
 - Requires ochazuke v0.124.1: a key on a focused row acts on it again instead of asking for its subject, and the path ask steps its sources with `ctrl+o` again.

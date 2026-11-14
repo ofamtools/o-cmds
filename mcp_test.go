@@ -87,7 +87,7 @@ func TestMCPMalformedAndEmptyScript(t *testing.T) {
 	}
 	result = a.callTool("cmd_add", json.RawMessage(`{}`), "tester")
 	b, _ = json.Marshal(result)
-	if !strings.Contains(string(b), `"isError":true`) {
-		t.Fatalf("missing script accepted: %s", b)
+	if strings.Contains(string(b), `"isError":true`) || !strings.Contains(string(b), "command-2") {
+		t.Fatalf("nothing given is recorded as the next command-N: %s", b)
 	}
 }

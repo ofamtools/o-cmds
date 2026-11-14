@@ -1,0 +1,85 @@
+# refusecheck baseline: file, function, class, template, count, reason (tab separated).
+# A row with a reason (E1..E5: rights, loses, failure, declaration, cancel) is a legitimate refusal that stays.
+# A row without one is debt that may only shrink: REFUSECHECK_UPDATE=1 removes rows and lowers counts, never adds.
+# Adding a row is a reviewed edit.
+app.go	App.edit	K15	"Failed(…)"	1
+app.go	App.execute	K15	"--stdin and --edit-stdin are mutually exclusive"	1
+app.go	App.execute	K15	"Failed(…)"	1
+app.go	App.executeInput	K15	"Failed(…)"	1
+app.go	App.on	K15	"Failed(…)"	1
+app.go	App.show	K15	"Failed(…)"	1
+app.go	App.specs	K2	"Enum without Accept: <expr>"	1
+app.go	App.target	K3	"name a command or displayed number"	1
+app.go	App.yank	K15	"Failed(…)"	2
+app.go	newApp	K2	"Enum without Accept: list.order"	1
+app.go	newApp	K2	"Enum without Accept: view.detail-style"	1
+app.go	result	K15	"Failed(…)"	1
+entry_verbs.go	App.entrySpecs	K15	"usage: o-cmds cmd serve"	1
+entry_verbs.go	App.foregroundSelf	K15	"Failed(…)"	1
+file_verbs.go	App.importScript	K1	"stdin is unavailable in the TUI; supply a file or command"	1
+file_verbs.go	App.importScript	K15	"file and command are mutually exclusive"	1
+file_verbs.go	App.importScript	K15	"source job %s: %s; output truncated=%t (job out/err retain its streams)"	1
+file_verbs.go	differentFiles	K9	"source and destination name the same file"	1
+file_verbs.go	runStream	K15	"unknown stream %q"	1
+job_io.go	App.writeJob	K15	"Failed(…)"	1
+job_io.go	App.writeJob	K15	"clipboard and registers require UTF-8 text; use output for binary bytes"	1
+job_io.go	streamParam	K2	"Enum without Accept: <expr>"	1
+job_io.go	validStream	K15	"unknown captured stream %q"	1
+job_io.go	validateOutputSink	K15	"choose only one destination: output, clipboard or register"	1
+job_io.go	validateOutputSink	K15	"output register must be a named register a-z (uppercase aliases allowed); use clipboard for the system clipboard"	1
+job_io.go	validateOutputSink	K3	"append needs a file or named register"	1
+main.go	App.runCLI	K15	"--stdin and --edit-stdin are mutually exclusive"	1
+main.go	App.runCLI	K3	"%s needs a value"	1
+main.go	App.runCLI	K3	"name a command or displayed number"	1
+main.go	globalData	K3	"--data needs a directory"	1
+mcp.go	App.callTool	K15	"unknown tool %q"	1
+mounted_results.go	App.history	K15	"Failed(…)"	1
+mounted_results.go	App.historyCLI	K15	"history did not open"	1
+pick.go	App.pickCLI	K15	"usage: o-cmds pick [NAME|NUMBER]"	1
+pick.go	App.pickCommand	K15	"Failed(…)"	1
+process.go	clipboard	K15	"no clipboard helper; cmd show-script NAME prints the script"	1
+run_capture.go	App.prepareRun	K14	"count run: %w"	1	failure
+run_capture.go	captureStream.close	K15	"output drain timed out; a descendant may still hold the stream"	1
+run_state.go	App.changeEach	K15	"Failed(…)"	2
+run_state.go	App.reset	K15	"Failed(…)"	1
+run_state.go	validTone	K15	"a tone name is one word"	1
+run_store.go	Store.runs	K14	"read run %s: %w"	1	failure
+run_store.go	Store.runs	K15	"invalid run identity in %s"	1
+run_store.go	Store.writeRun	K15	"invalid run identity"	1
+run_store.go	resolveRun	K14	"run target: %w"	1	failure
+run_store.go	resolveRun	K4	"run not found"	1
+run_verbs.go	App.commandRuns	K15	"Failed(…)"	2
+run_verbs.go	App.executionTarget	K15	"usage: %s TARGET"	1
+run_verbs.go	App.executionTarget	K3	"%s needs a value"	1
+run_verbs.go	App.executionTarget	K3	"name a target or displayed number"	1
+run_verbs.go	App.listRuns	K15	"Failed(…)"	1
+run_verbs.go	App.onRun	K15	"Failed(…)"	1
+run_verbs.go	App.rerun	K15	"Failed(…)"	2
+run_verbs.go	App.rerunLast	K1	"history UI disabled by view.jobs"	1
+run_verbs.go	App.rerunLast	K15	"Failed(…)"	2
+run_verbs.go	App.rerunLast	K4	"command has no recorded runs"	1
+run_verbs.go	App.rerunLastCLI	K4	"command has no recorded runs"	1
+run_verbs.go	nonnegative	K7	"must be at least zero"	1
+script_view.go	newScriptDetail	K3	"missing detail parent %q"	1
+script_view.go	newScriptDetail	K3	"missing detail window %q"	1
+shell_init.go	shellInit	K15	"function name must be a shell identifier: letters, digits and underscores, without a leading digit"	1
+shell_init.go	shellInit	K15	"shell-init supports zsh or bash"	1
+shell_init.go	shellInit	K15	"usage: o-cmds shell-init zsh|bash [--name NAME]"	1
+stdin.go	App.editStdin	K1	"stdin editor disabled by view.stdin"	1
+stdin.go	App.editStdin	K15	"Failed(…)"	1
+stdin.go	App.inputForRun	K15	"cannot rerun: edited stdin was truncated by jobs.max-bytes"	1
+stdin.go	App.inputForRun	K2	"unknown stdin kind %q"	1
+stdin.go	App.openInput	K14	"stdin: %w"	1	failure
+stdin.go	App.openInput	K15	"stdin kind must be file or edited"	1
+stdin.go	App.openInput	K15	"stdin must be a regular file"	1
+stdin.go	App.stdinFile	K1	"stdin picker disabled by view.stdin"	1
+stdin.go	App.stdinFile	K15	"Failed(…)"	3
+stdin.go	editedContent	K14	"stdin cancelled: %w"	1	failure
+stdin.go	editedContent	K14	"stdin cancelled: editor failed: %w"	1	failure
+stdin.go	var errEmptyInput	K3	"stdin cancelled: editor buffer is empty"	1
+store.go	Store.Undo	K15	"nothing to undo"	2
+store.go	resolve	K15	"%s"	1
+store.go	resolve	K4	"command %q not found"	1
+store.go	resolve	K4	"command number %q not found"	1
+stores.go	App.cmdStore	K3	"a command needs a name"	1
+tui.go	runTUI	K15	"unexpected view arguments"	1
