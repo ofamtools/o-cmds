@@ -1,12 +1,11 @@
 # namecheck baseline: file, function, kind, literal, count, reason (tab separated).
 # A row with a reason is a legitimate use that stays. A row without one is debt that may only shrink:
 # NAMECHECK_UPDATE=1 removes rows and lowers counts, never adds them. Adding a row is a reviewed edit.
+app.go	App.rows	compare	"new"	1	a command's run status value (data), toning its row
 app.go	standalonePage	compare	"script"	1
 main.go	App.runCLI	compare	"file"	1
 main.go	App.runCLI	cyclo	"-"	27
 main.go	App.verbCLI	compare	"script"	1
-mcp.go	App.tools	compare	"add"	1
 stdin.go	App.inputForRun	case	"file"	1
 stdin.go	App.openInput	compare	"file"	1
 stdin.go	App.recentInputs	compare	"file"	1
-app.go	App.rows	compare	"new"	1	a command's run status value (data), toning its row
