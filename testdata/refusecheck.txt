@@ -8,11 +8,8 @@ app.go	App.execute	K15	"Failed(…)"	1
 app.go	App.executeInput	K15	"Failed(…)"	1
 app.go	App.on	K15	"Failed(…)"	1
 app.go	App.show	K15	"Failed(…)"	1
-app.go	App.specs	K2	"Enum without Accept: <expr>"	1
 app.go	App.target	K3	"name a command or displayed number"	1
 app.go	App.yank	K15	"Failed(…)"	2
-app.go	newApp	K2	"Enum without Accept: list.order"	1
-app.go	newApp	K2	"Enum without Accept: view.detail-style"	1
 app.go	result	K15	"Failed(…)"	1
 entry_verbs.go	App.entrySpecs	K15	"usage: o-cmds cmd serve"	1
 entry_verbs.go	App.foregroundSelf	K15	"Failed(…)"	1
@@ -23,7 +20,6 @@ file_verbs.go	differentFiles	K9	"source and destination name the same file"	1
 file_verbs.go	runStream	K15	"unknown stream %q"	1
 job_io.go	App.writeJob	K15	"Failed(…)"	1
 job_io.go	App.writeJob	K15	"clipboard and registers require UTF-8 text; use output for binary bytes"	1
-job_io.go	streamParam	K2	"Enum without Accept: <expr>"	1
 job_io.go	validStream	K15	"unknown captured stream %q"	1
 job_io.go	validateOutputSink	K15	"choose only one destination: output, clipboard or register"	1
 job_io.go	validateOutputSink	K15	"output register must be a named register a-z (uppercase aliases allowed); use clipboard for the system clipboard"	1

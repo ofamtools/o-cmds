@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Changed: requires ochazuke v0.137.0.
+- Changed: requires ochazuke v0.144.0 (from v0.137.0). The family word list copy gains ochazuke's new words and classifies the seven `setup-*` verbs the framework now exports (`setup-archive`, `-create`, `-delete`, `-duplicate`, `-edit`, `-restore`, `-set`); the refusecheck baseline drops four stale `Enum without Accept` rows.
 - Changed: `cmd add` has one record-first rule on every route: a missing name is recorded as the first free `command-N` (was `command`, then `command-2`), an empty script is saved, and the MCP `cmd_add` no longer requires `script`.
 - Changed: `cmd list` declares a table for a person at a terminal (`.Table()`, `cli.tty-format`); a pipe still gets JSON.
 - Added: `TestNoNewRefusals` (ochazuke's refusecheck) with today's baseline, `testdata/refusecheck.txt`.
