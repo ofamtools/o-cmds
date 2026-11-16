@@ -1,0 +1,57 @@
+// o-cmds's default key rows from the run-3 key picker (ochazuke bindings, JSONC), all hidden; a user's bindings.json overrides them.
+{
+  "bindings": [
+    {"context": "cmd/normal", "bindings": [
+      {"key": "b", "action": "cmd.browse", "hidden": true},
+      {"key": "F", "action": "cmd.create", "hidden": true},
+      {"key": "g d", "action": "cmd.duplicate", "hidden": true},
+      {"key": "c", "action": "cmd.export", "hidden": true},
+      {"key": "M", "action": "cmd.get", "hidden": true},
+      {"key": "E", "action": "cmd.import", "hidden": true},
+      {"key": "f", "action": "cmd.jobs", "hidden": true},
+      {"key": "d b", "action": "cmd.jobs-clear", "hidden": true},
+      {"key": "m", "action": "cmd.list", "hidden": true},
+      {"key": "p", "action": "cmd.pick", "hidden": true},
+      {"key": "t", "action": "cmd.reveal", "hidden": true},
+      {"key": "w", "action": "cmd.run-line", "hidden": true},
+      {"key": "A", "action": "cmd.serve", "hidden": true},
+      {"key": "*", "action": "cmd.set", "hidden": true},
+      {"key": "B", "action": "cmd.setup-check", "hidden": true},
+      {"key": "C", "action": "cmd.setup-get", "hidden": true},
+      {"key": "D", "action": "cmd.setup-history", "hidden": true},
+      {"key": "O", "action": "cmd.setup-install", "hidden": true},
+      {"key": "U", "action": "cmd.setup-list", "hidden": true},
+      {"key": "W", "action": "cmd.setup-open", "hidden": true},
+      {"key": "ctrl+h", "action": "cmd.setup-open-with", "hidden": true},
+      {"key": "ctrl+l", "action": "cmd.setup-reveal", "hidden": true},
+      {"key": "ctrl+n", "action": "cmd.setup-show", "hidden": true},
+      {"key": "ctrl+o", "action": "cmd.setup-uninstall", "hidden": true},
+      {"key": "ctrl+r", "action": "cmd.setup-watch", "hidden": true},
+      {"key": "ctrl+s", "action": "cmd.setup-yank", "hidden": true},
+      {"key": "ctrl+v", "action": "cmd.setup-yank-path", "hidden": true},
+      {"key": "ctrl+z", "action": "cmd.shell-init", "hidden": true},
+      {"key": "g v", "action": "cmd.show", "hidden": true},
+      {"key": "alt+j", "action": "cmd.stdin-file", "hidden": true},
+      {"key": "alt+m", "action": "cmd.unpin", "hidden": true},
+      {"key": "alt+y", "action": "cmd.watch", "hidden": true}
+    ]},
+    {"context": "job/normal", "bindings": [
+      {"key": "d a", "action": "job.archive", "hidden": true},
+      {"key": "n", "action": "job.create", "hidden": true},
+      {"key": "r", "action": "job.edit", "hidden": true},
+      {"key": "b", "action": "job.err", "hidden": true},
+      {"key": "H", "action": "job.follow", "hidden": true},
+      {"key": "M", "action": "job.get", "hidden": true},
+      {"key": "U", "action": "job.history", "hidden": true},
+      {"key": "c", "action": "job.in", "hidden": true},
+      {"key": "m", "action": "job.list", "hidden": true},
+      {"key": "e", "action": "job.out", "hidden": true},
+      {"key": "g r", "action": "job.rerun", "hidden": true},
+      {"key": "w", "action": "job.save", "hidden": true},
+      {"key": "*", "action": "job.set", "hidden": true},
+      {"key": "f", "action": "job.show-output", "hidden": true},
+      {"key": "alt+m", "action": "job.watch", "hidden": true},
+      {"key": "C", "action": "job.write", "hidden": true}
+    ]}
+  ]
+}

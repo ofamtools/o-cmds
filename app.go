@@ -199,6 +199,9 @@ func newApp(s *Store, in io.Reader, out, errOut io.Writer) (*App, error) {
 	if err := declarePickers(a.r); err != nil {
 		return nil, err
 	}
+	if err := a.loadDefaultBindings(); err != nil {
+		return nil, err
+	}
 	return a, nil
 }
 

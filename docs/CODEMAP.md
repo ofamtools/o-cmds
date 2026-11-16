@@ -9,6 +9,7 @@
   sanctioned host register calls, generic external-tool opening.
 * `stores.go`: typed file/directory props, key/label/archive/owner roles and
   computed capture paths; library-generated record forms and path actions.
+* `bindings.go`, `bindings.json`: hidden default key rows as data (the run-3 key picker's), loaded after the Go rows of `app.go`.
 * `pickers.go`: the cmd and run noun pickers (`PickerDef`), listed by the catalog.
 * `app.go`: command noun, shared verbs and parameters, declarative agent and
   destruction metadata, transport-bound mutation identity, archive/restore flag
