@@ -9,7 +9,6 @@
       {"key": "M", "action": "cmd.get", "hidden": true},
       {"key": "E", "action": "cmd.import", "hidden": true},
       {"key": "f", "action": "cmd.jobs", "hidden": true},
-      {"key": "d b", "action": "cmd.jobs-clear", "hidden": true},
       {"key": "m", "action": "cmd.list", "hidden": true},
       {"key": "p", "action": "cmd.pick", "hidden": true},
       {"key": "t", "action": "cmd.reveal", "hidden": true},
