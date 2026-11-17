@@ -243,6 +243,9 @@ func (a *App) runLeaf(ctx context.Context, args []string) error {
 	return a.runCLI(ctx, args)
 }
 
+// runBoolFlags are the cmd run flags that take no value.
+var runBoolFlags = map[string]bool{"--yes": true, "--assume-yes": true, "--edit-stdin": true, "--help": true, "-h": true}
+
 // This leaf owns a stream rather than a JSON answer: never append a framework
 // result to the script's bytes, and pass an ExitError through to oden.Report.
 func (a *App) runCLI(ctx context.Context, args []string) error {
@@ -263,6 +266,7 @@ func (a *App) runCLI(ctx context.Context, args []string) error {
 	inputKind := fs.String("stdin-kind", "file", "Input provenance: file or edited (retained for reruns)")
 	editInput := fs.Bool("edit-stdin", false, "Edit an empty stdin buffer")
 	fs.Bool("yes", false, "Host compatibility")
+	assume := fs.Bool("assume-yes", false, "Run with OCHAZUKE_ASSUME_YES=1: ochazuke tools answer their confirm prompts yes")
 	// flag accepts flags before positional words; move one target word to
 	// the end, leaving option values paired and everything after -- intact.
 	var positional []string
@@ -274,7 +278,7 @@ func (a *App) runCLI(ctx context.Context, args []string) error {
 			continue
 		}
 		flags = append(flags, arg)
-		if !strings.Contains(arg, "=") && arg != "--yes" && arg != "--edit-stdin" && arg != "--help" && arg != "-h" {
+		if !strings.Contains(arg, "=") && !runBoolFlags[arg] {
 			i++
 			if i >= len(args) {
 				return fmt.Errorf("%s needs a value", arg)
@@ -294,10 +298,12 @@ func (a *App) runCLI(ctx context.Context, args []string) error {
 		Stdin     string   `json:"stdin"`
 		EditStdin bool     `json:"edit-stdin"`
 		StdinKind string   `json:"stdin-kind"`
+		AssumeYes bool     `json:"assume-yes"`
 	}
 	if e := json.Unmarshal([]byte(*raw), &host); e != nil {
 		return e
 	}
+	assumeYes := *assume || host.AssumeYes
 	if *target == "" {
 		*target = host.Target
 	}
@@ -325,7 +331,7 @@ func (a *App) runCLI(ctx context.Context, args []string) error {
 		if *inputPath != "" {
 			return errors.New("--stdin and --edit-stdin are mutually exclusive")
 		}
-		return a.runEdited(ctx, row, argv)
+		return a.runEdited(ctx, row, argv, assumeYes)
 	}
 	if host.StdinKind != "" && *inputKind == "file" {
 		*inputKind = host.StdinKind
@@ -334,10 +340,10 @@ func (a *App) runCLI(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	return a.runRecordedInput(ctx, row, argv, input)
+	return a.runRecordedInput(ctx, row, argv, assumeYes, input)
 }
 
-func (a *App) runEdited(ctx context.Context, row Command, argv []string) error {
+func (a *App) runEdited(ctx context.Context, row Command, argv []string, assume bool) error {
 	path, err := a.newInputBuffer()
 	if err != nil {
 		return err
@@ -356,17 +362,17 @@ func (a *App) runEdited(ctx context.Context, row Command, argv []string) error {
 	if err != nil {
 		return err
 	}
-	return a.runRecordedInput(ctx, row, argv, input)
+	return a.runRecordedInput(ctx, row, argv, assume, input)
 }
 
-func (a *App) runRecordedInput(ctx context.Context, row Command, argv []string, input *runInput) error {
+func (a *App) runRecordedInput(ctx context.Context, row Command, argv []string, assume bool, input *runInput) error {
 	defer input.close()
 	// A terminal sends these to the whole foreground process group. Let the
 	// script receive them while the recorder survives to save its result.
 	interrupts := make(chan os.Signal, 1)
 	signal.Notify(interrupts, os.Interrupt, syscall.SIGQUIT)
 	defer signal.Stop(interrupts)
-	cmd := scriptCommand(ctx, row, argv)
+	cmd := withAssumeYes(scriptCommand(ctx, row, argv), assume)
 	finish, e := a.prepareRun(cmd, row, argv, "cli", input)
 	if e != nil {
 		return e

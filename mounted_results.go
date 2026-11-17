@@ -46,7 +46,7 @@ func (a *App) runView(c ochazuke.Ctx, row Command) ochazuke.Result {
 		out, errOut := &cappedStream{limit: limit}, &cappedStream{limit: limit}
 		recorder := *a
 		recorder.out, recorder.errOut, recorder.changed = out, errOut, nil
-		cmd := scriptCommand(ctx, row, args)
+		cmd := withAssumeYes(scriptCommand(ctx, row, args), boolArg(c.Args, "assume-yes"))
 		cmd.Stdout, cmd.Stderr = out, errOut
 		if in != nil {
 			cmd.Stdin = in.file

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 
@@ -17,6 +18,22 @@ import (
 // Runner is the only boundary that executes user scripts, editors or clipboard
 // helpers. Tests inject it for any potentially destructive script.
 type Runner func(*exec.Cmd) error
+
+// assumeYesEnv is ochazuke'"'"'s family-wide standing answer to a confirm
+// (the shell reads it exactly as --yes). A run set to assume yes carries it in
+// its environment, for that run only.
+const assumeYesEnv = "OCHAZUKE_ASSUME_YES"
+
+func withAssumeYes(cmd *exec.Cmd, on bool) *exec.Cmd {
+	if on {
+		cmd.Env = append(os.Environ(), assumeYesEnv+"=1")
+	}
+	return cmd
+}
+
+func assumesYes(cmd *exec.Cmd) bool {
+	return slices.Contains(cmd.Env, assumeYesEnv+"=1")
+}
 
 func scriptCommand(ctx context.Context, c Command, args []string) *exec.Cmd {
 	if c.Line != nil {

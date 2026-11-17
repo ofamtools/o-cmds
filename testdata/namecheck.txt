@@ -4,7 +4,6 @@
 app.go	App.rows	compare	"new"	1	a command's run status value (data), toning its row
 app.go	standalonePage	compare	"script"	1
 main.go	App.runCLI	compare	"file"	1
-main.go	App.runCLI	cyclo	"-"	27
 main.go	App.verbCLI	compare	"script"	1
 stdin.go	App.inputForRun	case	"file"	1
 stdin.go	App.openInput	compare	"file"	1

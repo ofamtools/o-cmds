@@ -200,7 +200,7 @@ func (a *App) prepareRun(cmd *exec.Cmd, c Command, args []string, source string,
 	}
 	r := Run{ID: at.UTC().Format("20060102T150405.000000000Z") + "-" + id, CommandID: c.ID, CommandName: c.Name,
 		ScriptHash: fmt.Sprintf("%x", sha256.Sum256([]byte(script))), Args: append([]string{}, args...), Cwd: cwd,
-		Started: at.UTC(), Source: source, Author: stampAuthor(os.Getenv, "owner")}
+		Started: at.UTC(), Source: source, Author: stampAuthor(os.Getenv, "owner"), AssumeYes: assumesYes(cmd)}
 	r.Script = c.Line
 	if c.JobID != "" {
 		r.ID = c.JobID

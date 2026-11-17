@@ -116,7 +116,7 @@ func (a *App) stdinFile(c ochazuke.Ctx, row Command) ochazuke.Result {
 			if err != nil {
 				return ochazuke.Failed(err)
 			}
-			return a.executeInput(row, nil, in)
+			return a.executeInput(row, nil, false, in)
 		},
 	})
 	return result(nil, err)
@@ -174,7 +174,7 @@ func editedContent(path string, editorErr error) error {
 
 func (a *App) editStdin(c ochazuke.Ctx, row Command) ochazuke.Result {
 	if !a.tui {
-		return result(nil, a.runEdited(background(), row, stringList(c.Args["args"])))
+		return result(nil, a.runEdited(background(), row, stringList(c.Args["args"]), boolArg(c.Args, "assume-yes")))
 	}
 	if !a.r.Settings().Bool("view.stdin") {
 		return ochazuke.Failed(errors.New("stdin editor disabled by view.stdin"))
@@ -199,7 +199,7 @@ func (a *App) editStdin(c ochazuke.Ctx, row Command) ochazuke.Result {
 			args = append(args, arg)
 		}
 		// Execute synchronously prepares/opens the input before the temp name is removed.
-		_, err := a.r.ExecuteAt(c.Context, ochazuke.Do("cmd.run", ochazuke.Arguments{"target": row.ID, "args": args, "stdin": path, "stdin-kind": "edited"}).Request)
+		_, err := a.r.ExecuteAt(c.Context, ochazuke.Do("cmd.run", ochazuke.Arguments{"target": row.ID, "args": args, "stdin": path, "stdin-kind": "edited", "assume-yes": boolArg(c.Args, "assume-yes")}).Request)
 		if err != nil {
 			c.Error(err.Error())
 		}

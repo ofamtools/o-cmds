@@ -163,7 +163,7 @@ func (a *App) rerun(_ ochazuke.Ctx, r RunOutput) ochazuke.Result {
 	if e != nil {
 		return ochazuke.Failed(e)
 	}
-	return a.executeInput(c, r.Args, in)
+	return a.executeInput(c, r.Args, r.AssumeYes, in)
 }
 
 func (a *App) rerunLast(c ochazuke.Ctx, row Command) ochazuke.Result {
@@ -290,7 +290,7 @@ func (a *App) rerunRecorded(ctx context.Context, r RunOutput) error {
 	if err != nil {
 		return err
 	}
-	return a.runRecordedInput(ctx, c, r.Args, in)
+	return a.runRecordedInput(ctx, c, r.Args, r.AssumeYes, in)
 }
 
 func runStatus(r Run) string {

@@ -458,3 +458,38 @@ func TestRunShowArgumentCapturesAndReads(t *testing.T) {
 		t.Fatalf("stream=%q %v", out, e)
 	}
 }
+
+// assume-yes sets OCHAZUKE_ASSUME_YES=1 for that run only; the job records it
+// and a rerun repeats it.
+func TestRunAssumeYes(t *testing.T) {
+	t.Setenv("OCHAZUKE_ASSUME_YES", "")
+	os.Unsetenv("OCHAZUKE_ASSUME_YES")
+	s := fixture(t)
+	c := addCommand(t, s, "answer", `printf '%s' "${OCHAZUKE_ASSUME_YES-unset}"`)
+	if out, e := invoke(t, s, "", "cmd", "run", c.Name); e != nil || out != "unset" {
+		t.Fatalf("plain run: %q %v", out, e)
+	}
+	if out, e := invoke(t, s, "", "cmd", "run", c.Name, "--assume-yes"); e != nil || out != "1" {
+		t.Fatalf("assume-yes run: %q %v", out, e)
+	}
+	plain, _ := s.ReadRun("1")
+	set, _ := s.ReadRun("2")
+	if plain.AssumeYes || !set.AssumeYes {
+		t.Fatalf("job records: %v %v", plain.AssumeYes, set.AssumeYes)
+	}
+	if out, e := invoke(t, s, "", "job", "rerun", "2"); e != nil || out != "1" {
+		t.Fatalf("rerun repeats: %q %v", out, e)
+	}
+	if again, _ := s.ReadRun("3"); !again.AssumeYes {
+		t.Fatalf("rerun record: %+v", again)
+	}
+	if out, e := invoke(t, s, "", "cmd", "run", c.Name, "--show", "--assume-yes"); e != nil || !strings.Contains(out, `--- stdout ---\n1\n`) {
+		t.Fatalf("shown run (the g Y row): %q %v", out, e)
+	}
+	if shown, _ := s.ReadRun("4"); !shown.AssumeYes {
+		t.Fatalf("shown record: %+v", shown)
+	}
+	if out, e := invoke(t, s, "", "job", "rerun", "1"); e != nil || out != "unset" {
+		t.Fatalf("plain rerun: %q %v", out, e)
+	}
+}

@@ -32,6 +32,7 @@ type Run struct {
 	Error        string        `json:"error,omitempty"`
 	Author       Author        `json:"author"`
 	Source       string        `json:"source"`
+	AssumeYes    bool          `json:"assume_yes,omitempty"` // run with OCHAZUKE_ASSUME_YES=1; a rerun repeats it
 	StdoutBytes  int64         `json:"stdout_bytes"`
 	StderrBytes  int64         `json:"stderr_bytes"`
 	StdoutKept   int           `json:"stdout_kept"`

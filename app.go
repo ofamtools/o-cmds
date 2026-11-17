@@ -173,6 +173,7 @@ func newApp(s *Store, in io.Reader, out, errOut io.Writer) (*App, error) {
 	// runtime's effective bindings, including owner overrides.
 	a.r.Define("cmd").Mode("normal").
 		Bind("enter", ochazuke.Do("cmd.run", ochazuke.Arguments{"show": true})).
+		Bind("g Y", ochazuke.Do("cmd.run", ochazuke.Arguments{"show": true, "assume-yes": true})).
 		Bind("g i", ochazuke.Do("cmd.run-file").Guard("stdin-ui")).
 		Bind("g e", ochazuke.Do("cmd.edit-stdin").Guard("stdin-ui")).
 		Bind("g r", ochazuke.Do("cmd.rerun").Guard("history-ui")).
@@ -256,7 +257,7 @@ func (a *App) specs() []verbSpec {
 		{name: "jobs-clear", description: "Remove a command's captured run history", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.clearRuns), destructive: true},
 		{name: "add", creates: true, description: "Record a shell script, including an empty or unassociated one", params: map[string]ochazuke.Parameter{"name": param("Name; duplicates receive a suffix"), "desc": param("Description"), "file": fileParam("Read script from a file, or - for stdin"), "script": param("Script text"), "cwd": dirParam("Working directory; absence is allowed"), "tags": {Type: "array", Description: "Tags"}, "author": param("Author name; defaults to agent environment or owner")}, handler: a.add},
 		{name: "list", description: "List numbered commands; newest at the bottom by default", params: map[string]ochazuke.Parameter{"filter": param("Match name, description or tags")}, handler: a.list, rows: true, output: "table"},
-		{name: "run", text: true, slot: "run", timeout: 15 * time.Minute, description: "Run with sh in the recorded cwd, streaming output and preserving exit status", params: map[string]ochazuke.Parameter{"target": focused, "args": {Type: "array", Description: "Script arguments (CLI also accepts -- args...)"}, "stdin": {Type: "path", Path: ochazuke.PathFile, Description: "File to use as stdin"}, "edit-stdin": {Type: "boolean", Description: "Edit an empty stdin buffer"}, "show": {Type: "boolean", Description: "Capture both streams and read stdout, stderr and the exit status in a viewer instead of streaming to the terminal"}, "stdin-kind": {Type: "string", Enum: []string{"file", "edited"}, Description: "Input provenance; edited retains input for reruns"}}, positional: []string{"target"}, handler: a.on(a.runOrShow), cli: a.runLeaf},
+		{name: "run", text: true, slot: "run", timeout: 15 * time.Minute, description: "Run with sh in the recorded cwd, streaming output and preserving exit status", params: map[string]ochazuke.Parameter{"target": focused, "args": {Type: "array", Description: "Script arguments (CLI also accepts -- args...)"}, "stdin": {Type: "path", Path: ochazuke.PathFile, Description: "File to use as stdin"}, "edit-stdin": {Type: "boolean", Description: "Edit an empty stdin buffer"}, "show": {Type: "boolean", Description: "Capture both streams and read stdout, stderr and the exit status in a viewer instead of streaming to the terminal"}, "stdin-kind": {Type: "string", Enum: []string{"file", "edited"}, Description: "Input provenance; edited retains input for reruns"}, "assume-yes": {Type: "boolean", Description: "Run with OCHAZUKE_ASSUME_YES=1 so ochazuke tools answer their confirm prompts yes; recorded on the job and repeated by a rerun"}}, positional: []string{"target"}, handler: a.on(a.runOrShow), cli: a.runLeaf},
 		{name: "yank", description: "Copy the script to the clipboard; answers the script", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.yank), output: "script"},
 		{name: "edit", foreground: true, description: "Open $VISUAL/$EDITOR on the script; checkpoint its current contents for undo", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.edit)},
 		{name: "delete", description: "Hide a command immediately, retaining its script and undo history; agents use cmd.archive", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.archive(true)), agent: ochazuke.AgentNever},
@@ -480,15 +481,15 @@ func (a *App) execute(c ochazuke.Ctx, row Command) ochazuke.Result {
 	if err != nil {
 		return ochazuke.Failed(err)
 	}
-	return a.executeInput(row, stringList(c.Args["args"]), in)
+	return a.executeInput(row, stringList(c.Args["args"]), boolArg(c.Args, "assume-yes"), in)
 }
 
-func (a *App) executeInput(row Command, args []string, in *runInput) ochazuke.Result {
+func (a *App) executeInput(row Command, args []string, assume bool, in *runInput) ochazuke.Result {
 	a.clearInputNotice()
 	if !a.tui {
-		return result(nil, a.runRecordedInput(background(), row, args, in))
+		return result(nil, a.runRecordedInput(background(), row, args, assume, in))
 	}
-	cmd := scriptCommand(background(), row, args)
+	cmd := withAssumeYes(scriptCommand(background(), row, args), assume)
 	finish, err := a.prepareRun(cmd, row, args, "tui", in)
 	if err != nil {
 		in.close()
@@ -563,3 +564,8 @@ func (a *App) undo(ochazuke.Ctx) ochazuke.Result {
 
 // JSON args used by catalog hosts share the same argument representation.
 func background() context.Context { return context.Background() }
+
+func boolArg(args ochazuke.Arguments, name string) bool {
+	v, _ := args[name].(bool)
+	return v
+}
