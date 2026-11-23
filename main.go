@@ -5,7 +5,6 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"io/fs"
@@ -15,8 +14,11 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"ofam.dev/ochazuke/cli"
 	"ofam.dev/ochazuke/config"
+	"ofam.dev/ochazuke/core"
 	"ofam.dev/ochazuke/ui"
+	"ofam.dev/oden"
 )
 
 func main() { os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)) }
@@ -82,77 +84,198 @@ func run(args []string, in io.Reader, stdout, stderr io.Writer) int {
 	cfg, set := loadConfig(configDir())
 	svc := newService(&Store{Dir: dir}, in, stdout, stderr, set)
 
-	if len(args) > 0 {
-		switch args[0] {
-		case "-v", "--version", "version":
-			fmt.Fprintf(stdout, "o-cmds %s\n", version)
-			return 0
-		case "--smoke":
-			return runSmoke(stdout)
-		case "list":
-			return reportErr(stderr, svc.cliList(args[1:]))
-		case "run":
-			return reportErr(stderr, svc.cliRun(context.Background(), args[1:]))
-		case "add", "new":
-			return reportErr(stderr, svc.cliAdd(args[1:]))
-		case "show":
-			return reportErr(stderr, svc.cliShow(args[1:]))
-		case "jobs":
-			return reportErr(stderr, svc.cliJobs(args[1:]))
-		case "rerun":
-			return reportErr(stderr, svc.cliRerun(context.Background(), args[1:]))
-		case "pick":
-			return reportErr(stderr, svc.cliPick(args[1:], cfg))
-		case "shell-init":
-			return reportErr(stderr, shellInit(args[1:], stdout, stderr))
-		case "mcp":
-			return reportErr(stderr, svc.mcp())
-		case "catalog":
-			return reportErr(stderr, writeJSON(stdout, buildManifest()))
-		case "query":
-			return reportErr(stderr, svc.cliQuery(args[1:]))
-		case "view":
-			args = args[1:]
+	app := newOdenApp(args, svc, cfg, set, in, stdout, stderr)
+	return reportErr(stderr, app.Run(context.Background()))
+}
+
+func newOdenApp(args []string, svc *Service, cfg Config, set *config.Settings, in io.Reader, stdout, stderr io.Writer) *oden.App {
+	runTUI := func(_ context.Context, rootArgs []string) error {
+		if len(rootArgs) > 0 {
+			return &oden.ExitError{Code: 2, Err: fmt.Errorf("unknown flag or argument %q", rootArgs[0])}
 		}
+		c := cfg
+		if set.Bool("clipboard", true) {
+			c.Copy = func(text string) error {
+				return clipboard(context.Background(), text, svc.run, stderr)
+			}
+		}
+		env := newEnv(svc, c)
+		sh := newShell(env)
+		if _, err := tea.NewProgram(program{sh, env}).Run(); err != nil {
+			return err
+		}
+		return nil
 	}
 
-	fl := flag.NewFlagSet("o-cmds", flag.ContinueOnError)
-	fl.SetOutput(stderr)
-	showVer := fl.Bool("version", false, "print version and exit")
-	smoke := fl.Bool("smoke", false, "run a scripted 120x32 session over a temp data dir without a TTY")
-	fl.Usage = func() {
-		fmt.Fprint(stderr, usage)
-		fl.PrintDefaults()
+	info := cli.AppInfo{
+		Name:     "o-cmds",
+		Version:  version,
+		Summary:  "Record, inspect, and run small shell scripts as tracked jobs",
+		HelpText: usage,
+		Modes:    func() []core.Mode { return modes },
+		Bindings: func() []core.Binding { return defaultBindings() },
+		Specs:    func() []core.CommandSpec { return commandSpecs() },
+		RunTUI:   runTUI,
+		RunSmoke: func(out io.Writer, _ bool) error {
+			if code := runSmoke(out); code != 0 {
+				return &oden.ExitError{Code: code, Err: errors.New("smoke failed")}
+			}
+			return nil
+		},
+		Manifest: cmdsExtManifest(),
+		Capabilities: &oden.Capabilities{
+			Name:         "o-cmds",
+			Version:      version,
+			Summary:      "Record, inspect, and run small shell scripts as tracked jobs",
+			Capabilities: []string{"query", "catalog", "tui", "mcp"},
+		},
+		Query: func(_ context.Context, kind string, qargs []string) (oden.ExtQueryResult, error) {
+			res, err := svc.queryRecords(kind, strings.Join(qargs, " "))
+			if err != nil {
+				return oden.ExtQueryResult{}, err
+			}
+			items := make([]oden.ExtRecord, 0, len(res.Items))
+			for _, it := range res.Items {
+				items = append(items, oden.ExtRecord{
+					Kind:          it.Kind,
+					ID:            it.ID,
+					Fields:        it.Fields,
+					ArchiveStatus: it.ArchiveStatus,
+					StarStatus:    it.StarStatus,
+					CreatedAt:     it.CreatedAt,
+					UpdatedAt:     it.UpdatedAt,
+				})
+			}
+			return oden.ExtQueryResult{
+				Items:     items,
+				Total:     res.Total,
+				FilterErr: res.FilterErr,
+			}, nil
+		},
 	}
-	if err := fl.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return 0
+
+	app := cli.NewApp(info, args, oden.WithStdio(in, stdout, stderr))
+
+	app.Add(
+		oden.Command{
+			Name:    "list",
+			Summary: "list recorded commands",
+			Usage:   "[--filter TEXT] [--format table|json|markdown]",
+			Handle:  func(c *oden.Ctx) error { return svc.cliList(c.Args) },
+		},
+		oden.Command{
+			Name:    "run",
+			Summary: "run a recorded command and record its job",
+			Usage:   "NAME|NUMBER|ID [--assume-yes] [--stdin FILE|--edit-stdin] [--show] [-- ARG...]",
+			Handle:  func(c *oden.Ctx) error { return svc.cliRun(c.Context, c.Args) },
+		},
+		oden.Command{
+			Name:    "add",
+			Aliases: []string{"new"},
+			Summary: "record a new shell command",
+			Usage:   "[--name NAME] [--desc DESC] [--script TEXT|--file FILE] [--cwd DIR] [--tags A,B]",
+			Handle:  func(c *oden.Ctx) error { return svc.cliAdd(c.Args) },
+		},
+		oden.Command{
+			Name:    "show",
+			Summary: "print a command's script or metadata",
+			Usage:   "NAME|NUMBER|ID [--format script|json|markdown]",
+			Handle:  func(c *oden.Ctx) error { return svc.cliShow(c.Args) },
+		},
+		oden.Command{
+			Name:    "jobs",
+			Summary: "list jobs or inspect captured job streams",
+			Usage:   "[COMMAND] [--show|--out|--err|--in|--delete JOB] [--format table|json]",
+			Handle:  func(c *oden.Ctx) error { return svc.cliJobs(c.Args) },
+		},
+		oden.Command{
+			Name:    "rerun",
+			Summary: "rerun a recorded job or a command's latest job",
+			Usage:   "JOB|COMMAND",
+			Handle:  func(c *oden.Ctx) error { return svc.cliRerun(c.Context, c.Args) },
+		},
+		oden.Command{
+			Name:    "pick",
+			Summary: "interactively pick a command and print its script",
+			Usage:   "[NAME|NUMBER]",
+			Handle:  func(c *oden.Ctx) error { return svc.cliPick(c.Args, cfg) },
+		},
+		oden.Command{
+			Name:    "shell-init",
+			Summary: "print zsh/bash shell integration helper",
+			Usage:   "zsh|bash [--name NAME]",
+			Handle:  func(c *oden.Ctx) error { return shellInit(c.Args, stdout, stderr) },
+		},
+		oden.Command{
+			Name:    "mcp",
+			Summary: "run the MCP stdio server (read/write commands, never runs)",
+			Handle:  func(c *oden.Ctx) error { return svc.mcp() },
+		},
+		oden.Command{
+			Name:    "view",
+			Aliases: []string{"tui"},
+			Summary: "open the interactive Commands & Jobs TUI",
+			Handle:  func(c *oden.Ctx) error { return runTUI(c.Context, c.Args) },
+		},
+	)
+
+	return app
+}
+
+func cmdsExtManifest() *oden.ExtManifest {
+	m := buildManifest()
+	schemas := make([]oden.ExtSchema, 0, len(m.Schemas))
+	for _, s := range m.Schemas {
+		fields := make([]oden.ExtField, 0, len(s.Fields))
+		for _, f := range s.Fields {
+			fields = append(fields, oden.ExtField{
+				Name:        f.Name,
+				Type:        string(f.Type),
+				Required:    f.Required,
+				Description: f.Description,
+				Enum:        f.Enum,
+				Default:     f.Default,
+				RefKinds:    f.RefKinds,
+			})
 		}
-		return 2
+		schemas = append(schemas, oden.ExtSchema{
+			Kind:           s.Kind,
+			Title:          s.Title,
+			Plural:         s.Plural,
+			Fields:         fields,
+			DefaultColumns: s.DefaultColumns,
+			SummaryField:   s.SummaryField,
+			UniqueFields:   s.UniqueFields,
+		})
 	}
-	if *showVer {
-		fmt.Fprintf(stdout, "o-cmds %s\n", version)
-		return 0
-	}
-	if *smoke {
-		return runSmoke(stdout)
-	}
-	if fl.NArg() > 0 {
-		fmt.Fprintf(stderr, "o-cmds: unknown command %q\n", fl.Arg(0))
-		return 2
-	}
-	if set.Bool("clipboard", true) {
-		cfg.Copy = func(text string) error {
-			return clipboard(context.Background(), text, svc.run, stderr)
+	cmds := make([]oden.ExtCommand, 0, len(m.Commands))
+	for _, cmd := range m.Commands {
+		params := make([]oden.ExtField, 0, len(cmd.Params))
+		for _, p := range cmd.Params {
+			params = append(params, oden.ExtField{
+				Name:        p.Name,
+				Type:        string(p.Type),
+				Required:    p.Required,
+				Description: p.Description,
+				Enum:        p.Enum,
+				Default:     p.Default,
+				RefKinds:    p.RefKinds,
+			})
 		}
+		cmds = append(cmds, oden.ExtCommand{
+			ID:          cmd.ID,
+			Description: cmd.Description,
+			Params:      params,
+			Tags:        cmd.Tags,
+			Meta:        cmd.Meta,
+		})
 	}
-	env := newEnv(svc, cfg)
-	sh := newShell(env)
-	if _, err := tea.NewProgram(program{sh, env}).Run(); err != nil {
-		fmt.Fprintln(stderr, "o-cmds:", err)
-		return 1
+	return &oden.ExtManifest{
+		Name:     m.Name,
+		Version:  m.Version,
+		Schemas:  schemas,
+		Commands: cmds,
 	}
-	return 0
 }
 
 func reportErr(stderr io.Writer, err error) int {
@@ -162,6 +285,13 @@ func reportErr(stderr io.Writer, err error) int {
 	var ee *ExitError
 	if errors.As(err, &ee) {
 		return ee.Code
+	}
+	var oee *oden.ExitError
+	if errors.As(err, &oee) {
+		if oee.Err != nil {
+			fmt.Fprintln(stderr, "o-cmds:", oee.Err)
+		}
+		return oee.Code
 	}
 	fmt.Fprintln(stderr, "o-cmds:", err)
 	return 1
