@@ -3,412 +3,275 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"os"
-	"os/exec"
-	"path/filepath"
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"ofam.dev/ochazuke"
-	ocli "ofam.dev/ochazuke/cli"
-	"ofam.dev/oden"
+
+	"ofam.dev/ochazuke/widgets/table"
 )
 
-func invoke(t *testing.T, s *Store, input string, args ...string) (string, error) {
+// invoke runs the CLI against store s and returns stdout or an error when
+// exit code is non-zero.
+func invoke(t *testing.T, s *Store, stdin string, args ...string) (string, error) {
 	t.Helper()
 	var out, errOut bytes.Buffer
-	a, e := newApp(s, strings.NewReader(input), &out, &errOut)
-	if e != nil {
-		t.Fatal(e)
+	full := append([]string{"--data", s.Dir}, args...)
+	code := run(full, strings.NewReader(stdin), &out, &errOut)
+	if code != 0 {
+		msg := strings.TrimSpace(errOut.String())
+		if msg == "" {
+			msg = "exit " + string(rune('0'+code))
+		}
+		return out.String(), errors.New(msg)
 	}
-	e = dispatch(a, args)
-	if e != nil {
-		t.Logf("stderr: %s", errOut.String())
-	}
-	return out.String(), e
+	return out.String(), nil
 }
 
-// A label written empty used to rename the command to "command"; the name
-// is required, so set refuses and nothing changes.
-func TestSetLabelRequiresAName(t *testing.T) {
+func TestCLIAddListShowRunRerunJobs(t *testing.T) {
 	s := fixture(t)
-	if _, e := invoke(t, s, "", "cmd", "add", "--name", "keep", "--script", "true"); e != nil {
-		t.Fatal(e)
+
+	// add & new
+	if out, err := invoke(t, s, "echo \"hi $1 yes=${OCHAZUKE_ASSUME_YES:-0}\"\n", "add", "--name", "greet", "--desc", "Say hi", "--tags", "demo,test"); err != nil {
+		t.Fatalf("add: %v", err)
+	} else if !strings.HasPrefix(out, "greet\t") {
+		t.Fatalf("add output = %q", out)
 	}
-	if _, e := invoke(t, s, "", "cmd", "set", "keep", "--props", `{"@label":""}`); e == nil {
-		t.Fatal("an empty name was written")
+	if _, err := invoke(t, s, "", "new", "--name", "failer", "--script", "echo oops >&2; exit 7\n"); err != nil {
+		t.Fatalf("new: %v", err)
 	}
-	if out, e := invoke(t, s, "", "cmd", "show-script", "keep"); e != nil || out != "true" {
-		t.Fatalf("%q %v", out, e)
+
+	// list (table & json)
+	if out, err := invoke(t, s, "", "list"); err != nil || !strings.Contains(out, "greet") || !strings.Contains(out, "failer") {
+		t.Fatalf("list table: out=%q err=%v", out, err)
+	}
+	if out, err := invoke(t, s, "", "list", "--format", "json"); err != nil {
+		t.Fatalf("list json: %v", err)
+	} else {
+		var rows []listRow
+		if err := json.Unmarshal([]byte(out), &rows); err != nil || len(rows) != 2 {
+			t.Fatalf("list json rows=%d err=%v", len(rows), err)
+		}
+	}
+
+	// show
+	if out, err := invoke(t, s, "", "show", "greet"); err != nil || !strings.Contains(out, "OCHAZUKE_ASSUME_YES") {
+		t.Fatalf("show: out=%q err=%v", out, err)
+	}
+
+	// run with --assume-yes and args
+	if out, err := invoke(t, s, "", "run", "greet", "--assume-yes", "--", "world"); err != nil || strings.TrimSpace(out) != "hi world yes=1" {
+		t.Fatalf("run greet: out=%q err=%v", out, err)
+	}
+
+	// rerun repeats args and assume-yes
+	if out, err := invoke(t, s, "", "rerun", "1"); err != nil || strings.TrimSpace(out) != "hi world yes=1" {
+		t.Fatalf("rerun 1: out=%q err=%v", out, err)
+	}
+
+	// run preserves non-zero exit code
+	var failOut, failErr bytes.Buffer
+	code := run([]string{"--data", s.Dir, "run", "failer"}, strings.NewReader(""), &failOut, &failErr)
+	if code != 7 || !strings.Contains(failErr.String(), "oops") {
+		t.Fatalf("run failer: code=%d err=%q", code, failErr.String())
+	}
+
+	// jobs table & json
+	if out, err := invoke(t, s, "", "jobs"); err != nil || !strings.Contains(out, "greet") || !strings.Contains(out, "exit 7") {
+		t.Fatalf("jobs: out=%q err=%v", out, err)
+	}
+	if out, err := invoke(t, s, "", "jobs", "--format", "json"); err != nil {
+		t.Fatalf("jobs json: %v", err)
+	} else {
+		var runs []runRow
+		if err := json.Unmarshal([]byte(out), &runs); err != nil || len(runs) != 3 {
+			t.Fatalf("jobs json runs=%d err=%v", len(runs), err)
+		}
+		if !runs[0].AssumeYes || !runs[1].AssumeYes {
+			t.Fatalf("expected assume_yes persisted on run & rerun: %+v", runs)
+		}
+	}
+
+	// --version
+	if out, err := invoke(t, s, "", "--version"); err != nil || !strings.Contains(out, "o-cmds "+version) {
+		t.Fatalf("--version: out=%q err=%v", out, err)
 	}
 }
 
-// A verb that acts on one command declares its target as the focused row's
-// id (Parameter.From), so the args form names the row; the verbs that take the
-// marked rows keep a plain target.
-func TestSingleCommandTargetsComeFromTheRow(t *testing.T) {
-	a, e := newApp(fixture(t), strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
-	if e != nil {
-		t.Fatal(e)
-	}
-	many := map[string]bool{"cmd.dismiss": true, "cmd.undismiss": true, "cmd.reset": true}
-	for key, op := range a.r.Operations.Entries() {
-		p, ok := op.Parameters["target"]
-		if !ok || !strings.HasPrefix(key, "cmd.") {
-			continue
-		}
-		want := "row:id"
-		if many[key] {
-			want = ""
-		}
-		if p.From != want {
-			t.Errorf("%s target From %q, want %q", key, p.From, want)
-		}
-	}
-}
-
-func TestCLIAddListShowRenameDeleteUndo(t *testing.T) {
+func TestCatalogAndQueryProtocol(t *testing.T) {
 	s := fixture(t)
-	at := s.now()
-	s.Now = func() time.Time { return at }
-	out, e := invoke(t, s, "printf 'old\\n'\n", "cmd", "add", "--name", "older", "--desc", "first script")
-	if e != nil {
-		t.Fatal(e)
+	addCommand(t, s, "deploy", "echo deploying\n")
+	if _, err := invoke(t, s, "", "run", "deploy"); err != nil {
+		t.Fatalf("run deploy: %v", err)
 	}
-	var first Command
-	if e = json.Unmarshal([]byte(out), &first); e != nil {
-		t.Fatal(e)
+
+	// catalog prints a valid ext.Manifest declaring cmds.command and cmds.job
+	catOut, err := invoke(t, s, "", "catalog")
+	if err != nil {
+		t.Fatalf("catalog: %v", err)
 	}
-	at = at.Add(time.Second)
-	file := filepath.Join(t.TempDir(), "source.sh")
-	if e = os.WriteFile(file, []byte("printf 'new\\n'\n"), 0o600); e != nil {
-		t.Fatal(e)
+	var m extManifest
+	if err := json.Unmarshal([]byte(catOut), &m); err != nil {
+		t.Fatalf("catalog json: %v", err)
 	}
-	_, e = invoke(t, s, "", "cmd", "add", "--file", file, "--name", "newer")
-	if e != nil {
-		t.Fatal(e)
+	if m.Name != "o-cmds" || len(m.Schemas) != 2 {
+		t.Fatalf("manifest=%+v", m)
 	}
-	out, e = invoke(t, s, "", "cmd", "list")
-	if e != nil {
-		t.Fatal(e)
+	if m.Schemas[0].Kind != "cmds.command" || m.Schemas[1].Kind != "cmds.job" {
+		t.Fatalf("schema kinds=%q, %q", m.Schemas[0].Kind, m.Schemas[1].Kind)
 	}
-	if strings.Index(out, "older") < 0 || strings.Index(out, "newer") < strings.Index(out, "older") {
-		t.Fatalf("order:\n%s", out)
+	if len(m.Commands) == 0 {
+		t.Fatal("manifest has no commands")
 	}
-	for _, args := range [][]string{{"cmd", "show-script", "1"}, {"cmd", "show-script", "--target", "cmd/" + first.ID}} {
-		out, e = invoke(t, s, "", args...)
-		if e != nil || out != "printf 'old\\n'\n" {
-			t.Fatalf("show=%q %v", out, e)
+
+	// query prints {"items": [...], "total": n}
+	qOut, err := invoke(t, s, "", "query")
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	var q extQueryResult
+	if err := json.Unmarshal([]byte(qOut), &q); err != nil {
+		t.Fatalf("query json: %v", err)
+	}
+	if q.Total != 2 || len(q.Items) != 2 {
+		t.Fatalf("query total=%d len=%d", q.Total, len(q.Items))
+	}
+	qCmd, err := invoke(t, s, "", "query", "--kind", "cmds.command", "deploy")
+	if err != nil {
+		t.Fatalf("query filtered: %v", err)
+	}
+	var q2 extQueryResult
+	if err := json.Unmarshal([]byte(qCmd), &q2); err != nil || q2.Total != 1 || q2.Items[0].Kind != "cmds.command" {
+		t.Fatalf("query filtered=%+v err=%v", q2, err)
+	}
+}
+
+func TestMCPServerLifecycleAndNoRun(t *testing.T) {
+	s := fixture(t)
+	input := strings.Join([]string{
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","clientInfo":{"name":"test-client"}}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"cmd_add","arguments":{"name":"mcp-cmd","desc":"from mcp","script":"echo hi\n"}}}`,
+		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"cmd_list","arguments":{}}}`,
+		`{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"cmd_show","arguments":{"target":"mcp-cmd"}}}`,
+	}, "\n") + "\n"
+
+	out, err := invoke(t, s, input, "mcp")
+	if err != nil {
+		t.Fatalf("mcp: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) != 5 {
+		t.Fatalf("expected 5 responses, got %d: %s", len(lines), out)
+	}
+	// tools/list must not expose any run tool.
+	if strings.Contains(lines[1], `"cmd_run"`) || !strings.Contains(lines[1], `"cmd_add"`) {
+		t.Fatalf("unexpected tools/list: %s", lines[1])
+	}
+	if !strings.Contains(lines[4], `echo hi`) {
+		t.Fatalf("cmd_show missing script: %s", lines[4])
+	}
+}
+
+func TestTUIWorkflowReadlineJobsAndCancel(t *testing.T) {
+	s := fixture(t)
+	addCommand(t, s, "alpha", "echo alpha-out\n")
+	addCommand(t, s, "beta", "echo yes=${OCHAZUKE_ASSUME_YES:-0}\n")
+	addCommand(t, s, "slow", "sleep 30\n")
+
+	svc := newService(s, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}, nil)
+	env := newEnv(svc, Config{})
+	env.Refresh = 0
+	sh := newShell(env)
+	d := newDriver(sh, 120, 32)
+	app := func() App { return appOf(sh.State) }
+	frame := func() string { return plain(sh.View().Content) }
+
+	// Move to beta (index 1) and run with assume-yes.
+	d.keys("g", "g", "j", "g", "Y")
+	if len(app().Runs) != 1 || !app().Runs[0].AssumeYes {
+		t.Fatalf("expected 1 assume-yes run, got %+v", app().Runs)
+	}
+	if !strings.Contains(frame(), "yes=1") {
+		t.Fatalf("viewer missing output:\n%s", frame())
+	}
+	d.keys("esc")
+
+	// Filter with Readline motions: type "alpx", ctrl+b, ctrl+d, verify match.
+	d.keys("/")
+	d.typeText("alpx")
+	d.keys("ctrl+b", "ctrl+d")
+	fa := app()
+	if fa.Cmd.Grid.Query != "alp" || len(fa.Cmd.Grid.Items()) != 1 {
+		t.Fatalf("readline filter query=%q items=%d", fa.Cmd.Grid.Query, len(fa.Cmd.Grid.Items()))
+	}
+	d.keys("esc")
+
+	// Sort cycle and reverse.
+	d.keys("s")
+	if app().Cmd.Sort != 0 || app().Cmd.Grid.SortDir != table.SortAsc {
+		t.Fatalf("sort=%d dir=%v", app().Cmd.Sort, app().Cmd.Grid.SortDir)
+	}
+	d.keys("S")
+	if app().Cmd.Grid.SortDir != table.SortDesc {
+		t.Fatalf("reverse sort dir=%v", app().Cmd.Grid.SortDir)
+	}
+
+	// Edit focused command in form with Readline.
+	d.keys("g", "g", "e")
+	if len(sh.State.Modals) != 1 || sh.State.Modals[0].ID != modalForm {
+		t.Fatalf("edit form did not open: %+v", sh.State.Modals)
+	}
+	d.keys("tab", "ctrl+u")
+	d.typeText("updated desc")
+	d.keys("enter")
+	if len(sh.State.Modals) != 0 {
+		t.Fatalf("form did not close")
+	}
+
+	// Jobs view headers.
+	d.keys("tab")
+	jf := frame()
+	for _, col := range []string{"#", "Exit", "Duration", "State"} {
+		if !strings.Contains(jf, col) {
+			t.Fatalf("Jobs table missing column %q:\n%s", col, jf)
 		}
 	}
-	out, e = invoke(t, s, "", "cmd", "show-script", "--target", "cmd/"+first.ID, "--json", "{}", "--yes")
-	if e != nil || !json.Valid([]byte(out)) {
-		t.Fatalf("host show=%q %v", out, e)
-	}
-	_, e = invoke(t, s, "", "cmd", "set", "older", "--props", `{"@label":"renamed"}`)
-	if e != nil {
-		t.Fatal(e)
-	}
-	_, e = invoke(t, s, "", "cmd", "delete", "renamed")
-	if e != nil {
-		t.Fatal(e)
-	}
-	_, e = invoke(t, s, "", "cmd", "undo")
-	if e != nil {
-		t.Fatal(e)
-	}
-	t.Setenv("O_CMDS_CLIPBOARD", "cat >/dev/null")
-	out, e = invoke(t, s, "", "cmd", "yank", "renamed")
-	if e != nil || out != "printf 'old\\n'\n" {
-		t.Fatalf("yank=%q %v", out, e)
-	}
-	out, e = invoke(t, s, "", "cmd", "get", "renamed", "--prop", "script_path")
-	if e != nil || strings.Trim(strings.TrimSpace(out), `"`) != first.Path {
-		t.Fatalf("script_path=%q %v", out, e)
-	}
-	out, e = invoke(t, s, "", "cmd", "path")
-	if e != nil || strings.Trim(strings.TrimSpace(out), `"`) != s.Dir {
-		t.Fatalf("path=%q %v", out, e)
-	}
-}
 
-func TestCLIRunExitArgsCwdAndStreams(t *testing.T) {
-	s := fixture(t)
-	cwd := t.TempDir()
-	c, e := s.Add(Add{Name: "exit", Cwd: cwd, Script: "printf '%s\\n' \"$PWD\" \"$1\" \"$2\"\ncat\nprintf 'err\\n' >&2\nexit 7\n"})
-	if e != nil {
-		t.Fatal(e)
+	// Smoke test runs cleanly end-to-end.
+	var smokeOut bytes.Buffer
+	if code := runSmoke(&smokeOut); code != 0 {
+		t.Fatalf("runSmoke failed (%d):\n%s", code, smokeOut.String())
 	}
-	var out, errOut bytes.Buffer
-	a, e := newApp(s, strings.NewReader("stdin\n"), &out, &errOut)
-	if e != nil {
-		t.Fatal(e)
+	// Cancel a running job via the engine without blocking.
+	env2 := newEnv(svc, Config{})
+	env2.Refresh = 0
+	sh2 := newShell(env2)
+	sh2.Engine.PrefixTimeout = 0
+	sh2.MaxFPS = 0
+	_, _ = sh2.Update(tea.WindowSizeMsg{Width: 120, Height: 32})
+	_, _ = sh2.Update(keyMsg("G")) // last command = slow
+	_, cmd := sh2.Update(keyMsg("enter"))
+	if cmd == nil {
+		t.Fatal("expected async run cmd for slow")
 	}
-	e = dispatch(a, []string{"cmd", "run", c.Name, "--", "with spaces", "--data"})
-	if oden.ExitCode(e) != 7 {
-		t.Fatalf("exit=%v", e)
+	doneCh := make(chan struct{})
+	go func() {
+		defer close(doneCh)
+		_ = cmd()
+	}()
+	// Wait briefly for the slot to be active, then cancel with C.
+	time.Sleep(50 * time.Millisecond)
+	_, cancelCmd := sh2.Update(keyMsg("C"))
+	if cancelCmd != nil {
+		msg := cancelCmd()
+		_, _ = sh2.Update(msg)
 	}
-	if out.String() != cwd+"\nwith spaces\n--data\nstdin\n" || errOut.String() != "err\n" {
-		t.Fatalf("out=%q err=%q", out.String(), errOut.String())
-	}
-	// A destructive-looking script only reaches a fake injected runner.
-	danger := addCommand(t, s, "danger", "rm -rf -- /does-not-exist\n")
-	a.run = func(cmd *exec.Cmd) error {
-		if cmd.Args[1] != danger.Path {
-			t.Fatalf("args=%q", cmd.Args)
-		}
-		return nil
-	}
-	if e = dispatch(a, []string{"cmd", "run", danger.Name}); e != nil {
-		t.Fatal(e)
-	}
-}
-
-func TestCLISettingsAndPin(t *testing.T) {
-	s := fixture(t)
-	first := addCommand(t, s, "old", "echo old")
-	s.Now = func() time.Time { return time.Date(2026, 10, 31, 0, 0, 0, 0, time.UTC) }
-	addCommand(t, s, "new", "echo new")
-	_, e := invoke(t, s, "", "setting", "set", "list.order", "newest-first", "--scope", "file", "--yes")
-	if e != nil {
-		t.Fatal(e)
-	}
-	out, e := invoke(t, s, "", "cmd", "show-script", "1")
-	if e != nil || out != "echo new" {
-		t.Fatalf("order setting=%q %v", out, e)
-	}
-	_, e = invoke(t, s, "", "cmd", "pin", first.Name)
-	if e != nil {
-		t.Fatal(e)
-	}
-	c, e := s.Resolve(first.Name, false)
-	if e != nil || !c.Pinned {
-		t.Fatalf("pin=%+v %v", c, e)
-	}
-	_, e = invoke(t, s, "", "cmd", "star", first.Name)
-	if e != nil {
-		t.Fatal(e)
-	}
-	c, _ = s.Resolve(first.Name, false)
-	if c.Pinned {
-		t.Fatal("star did not toggle")
-	}
-}
-
-func TestCatalogAndStandalonePage(t *testing.T) {
-	s := fixture(t)
-	addCommand(t, s, "old", "echo old")
-	s.Now = func() time.Time { return time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC) }
-	newest := addCommand(t, s, "new", "echo new")
-	out, e := invoke(t, s, "", "catalog")
-	if e != nil {
-		t.Fatal(e)
-	}
-	var doc ocli.CatalogDoc
-	if e = json.Unmarshal([]byte(out), &doc); e != nil {
-		t.Fatal(e)
-	}
-	if doc.Name != "o-cmds" || len(doc.Pages) != 1 || doc.Pages[0].Lists[0].Source != "cmd.list" {
-		t.Fatalf("catalog=%+v", doc.Pages)
-	}
-	keys := map[string]string{}
-	for _, row := range doc.Bindings {
-		if row.Noun == "cmd" && row.Mode == "normal" {
-			keys[row.Keys] = row.Request.Key()
-		}
-	}
-	for key, want := range map[string]string{
-		"enter": "cmd.run", "v": "cmd.show-script", "H": "cmd.history",
-		"y": "cmd.yank", "e": "cmd.edit", "d d": "cmd.delete",
-	} {
-		if got := keys[key]; got != want {
-			t.Errorf("published binding %s = %s, want %s", key, got, want)
-		}
-	}
-	var buf bytes.Buffer
-	a, e := newApp(s, strings.NewReader(""), &buf, &buf)
-	if e != nil {
-		t.Fatal(e)
-	}
-	p, e := mountPage(a)
-	if e != nil {
-		t.Fatal(e)
-	}
-	selected, ok := p.v.List(listID).Selected()
-	if !ok || selected.Data != "cmd/"+newest.ID {
-		t.Fatalf("selection=%+v", selected)
-	}
-	var foreground *exec.Cmd
-	p.m.Foreground = func(msg ochazuke.ForegroundMsg) tea.Cmd {
-		foreground = msg.Cmd
-		return func() tea.Msg { return msg.Done(nil) }
-	}
-	_, cmd := p.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if cmd != nil {
-		deliver(t, p, cmd())
-	}
-	if foreground == nil || len(foreground.Args) < 2 || foreground.Args[1] != newest.Path {
-		t.Fatalf("standalone Enter did not hand over the selected script: %v", foreground)
-	}
-}
-
-func deliver(t *testing.T, p *page, msg tea.Msg) {
-	t.Helper()
-	if batch, ok := msg.(tea.BatchMsg); ok {
-		for _, cmd := range batch {
-			if cmd != nil {
-				deliver(t, p, cmd())
-			}
-		}
-		return
-	}
-	_, cmd := p.Update(msg)
-	if cmd != nil {
-		deliver(t, p, cmd())
-	}
-}
-
-func TestGlobalDataPreservesRunArgs(t *testing.T) {
-	s := fixture(t)
-	args, dir, e := globalData([]string{"--data", s.Dir, "cmd", "run", "x", "--", "--data", "leave"})
-	if e != nil || dir != s.Dir || strings.Join(args, " ") != "cmd run x -- --data leave" {
-		t.Fatalf("args=%q dir=%q e=%v", args, dir, e)
-	}
-}
-
-func TestViewSmokeOwnsFrameworkAlias(t *testing.T) {
-	s := fixture(t)
-	addCommand(t, s, "smoke-command", "echo hello")
-	out, e := invoke(t, s, "", "view", "--smoke", "--width", "100", "--height", "20")
-	if e != nil {
-		t.Fatal(e)
-	}
-	if !strings.Contains(out, "smoke-command") {
-		t.Fatalf("frame=%s", out)
-	}
-}
-
-func TestPageDetailUsesDeclaredFields(t *testing.T) {
-	s := fixture(t)
-	addCommand(t, s, "detail-command", "printf hello\n")
-	out, e := invoke(t, s, "", "view", "--smoke", "--width", "120", "--height", "26")
-	if e != nil {
-		t.Fatal(e)
-	}
-	if strings.Contains(out, `"script":`) || !strings.Contains(out, "printf hello") {
-		t.Fatalf("detail rendered a JSON blob instead of fields:\n%s", out)
-	}
-}
-
-func TestPageFilterDeleteUndoRefreshAndOptOut(t *testing.T) {
-	s := fixture(t)
-	old := addCommand(t, s, "older", "echo old")
-	addCommand(t, s, "newer", "echo new")
-	var out bytes.Buffer
-	a, e := newApp(s, strings.NewReader(""), &out, &out)
-	if e != nil {
-		t.Fatal(e)
-	}
-	p, e := mountPage(a)
-	if e != nil {
-		t.Fatal(e)
-	}
-	press := func(code rune) {
-		_, cmd := p.Update(tea.KeyPressMsg{Code: code, Text: string(code)})
-		if cmd != nil {
-			deliver(t, p, cmd())
-		}
-	}
-	press('d')
-	press('d')
-	rows, e := s.List()
-	if e != nil || len(rows) != 1 || rows[0].ID != old.ID {
-		t.Fatalf("delete rows=%+v %v", rows, e)
-	}
-	press('u')
-	rows, e = s.List()
-	if e != nil || len(rows) != 2 {
-		t.Fatalf("undo rows=%+v %v", rows, e)
-	}
-	press('/')
-	press('n')
-	press('e')
-	press('w')
-	list := p.v.List(listID)
-	if list.Shown() != 1 {
-		t.Fatalf("filter shown=%d", list.Shown())
-	}
-	// A separately added command reaches an already-mounted standalone page.
-	addCommand(t, s, "newest", "echo newest")
-	if e = a.r.Settings().Set("list.refresh", time.Duration(0)); e != nil {
-		t.Fatal(e)
-	}
-	_, cmd := p.Update(reloadMsg{})
-	if cmd != nil {
-		t.Fatal("disabled refresh scheduled a timer")
-	}
-	if list.Shown() != 2 {
-		t.Fatalf("refresh filtered rows=%d", list.Shown())
-	}
-}
-
-func TestEditAndClipboardUseInjectedRunner(t *testing.T) {
-	s := fixture(t)
-	c := addCommand(t, s, "sample", "old bytes\n")
-	var out bytes.Buffer
-	a, e := newApp(s, strings.NewReader(""), &out, &out)
-	if e != nil {
-		t.Fatal(e)
-	}
-	t.Setenv("O_CMDS_CLIPBOARD", "fake-clipboard")
-	a.run = func(cmd *exec.Cmd) error {
-		b := new(bytes.Buffer)
-		if _, e := b.ReadFrom(cmd.Stdin); e != nil {
-			t.Fatal(e)
-		}
-		if b.String() != "old bytes\n" {
-			t.Fatalf("clipboard=%q", b.String())
-		}
-		return nil
-	}
-	if e = dispatch(a, []string{"cmd", "yank", c.Name}); e != nil {
-		t.Fatal(e)
-	}
-	a.run = func(cmd *exec.Cmd) error {
-		if got := cmd.Args[len(cmd.Args)-1]; got != c.Path {
-			t.Fatalf("editor path=%q", got)
-		}
-		return os.WriteFile(c.Path, []byte("changed bytes\n"), 0o600)
-	}
-	if e = dispatch(a, []string{"cmd", "edit", c.Name}); e != nil {
-		t.Fatal(e)
-	}
-	restored, e := s.Undo()
-	if e != nil {
-		t.Fatal(e)
-	}
-	text, e := s.Script(restored)
-	if e != nil || text != "old bytes\n" {
-		t.Fatalf("undo editor=%q %v", text, e)
-	}
-}
-
-func TestCatalogDeclaresSingularNamespace(t *testing.T) {
-	s := fixture(t)
-	out, e := invoke(t, s, "", "catalog")
-	if e != nil {
-		t.Fatal(e)
-	}
-	var doc ocli.CatalogDoc
-	if e = json.Unmarshal([]byte(out), &doc); e != nil {
-		t.Fatal(e)
-	}
-	if doc.Namespace != "cmd" || ochazuke.DefaultNamespace != "cmd" {
-		t.Fatalf("catalog namespace %q, default %q; want cmd", doc.Namespace, ochazuke.DefaultNamespace)
-	}
-	if got, e := ocli.CatalogNamespace(doc, "o-cmds"); e != nil || got != "cmd" {
-		t.Fatal(got, e)
+	select {
+	case <-doneCh:
+	case <-time.After(3 * time.Second):
+		t.Fatal("cancelled slow job did not exit")
 	}
 }

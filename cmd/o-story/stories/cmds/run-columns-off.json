@@ -1,9 +1,0 @@
-{
-  "name": "view.job-columns off leaves the Runs and Last columns out",
-  "commands": [{"name": "counted", "script": "true\n"}],
-  "settings": {"view.detail": false, "view.job-columns": false},
-  "script": [],
-  "expect": [
-    {"after": 0, "contains": ["counted"], "lacks": ["Runs", "Last"]}
-  ]
-}

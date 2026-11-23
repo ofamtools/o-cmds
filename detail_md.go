@@ -4,35 +4,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-
-	ocli "ofam.dev/ochazuke/cli"
 )
-
-// Detail styles of the standalone page (setting view.detail-style).
-const (
-	detailStyleScript   = "script"
-	detailStyleMarkdown = "markdown"
-)
-
-// detailFields are the record fields a host shows when its own detail.sections
-// setting is off (the framework's record view).
-var detailFields = []string{"name", "description", "author", "cwd", "tags", "last_run", "script"}
-
-// detailSections is the built-in, read-only document every catalog host
-// renders without registering an o-cmds detail kind: metadata above the
-// script as a fenced Markdown code block (row field detail_md).
-var detailSections = []ocli.CatalogDetailSection{
-	{Kind: "fields", Fields: []ocli.CatalogDetailField{
-		{Label: "Name", Field: "name"},
-		{Label: "Description", Field: "description"},
-		{Label: "Author", Field: "author_label"},
-		{Label: "Age", Field: "age"},
-		{Label: "Last run", Field: "last_run"},
-		{Label: "Cwd", Field: "cwd", Format: "path"},
-		{Label: "Tags", Field: "tags", Format: "list"},
-	}},
-	{Kind: "markdown", Field: "detail_md"},
-}
 
 // interpreterLanguages maps a shebang interpreter (version digits removed) to
 // the code block's info string; an unlisted interpreter names itself.

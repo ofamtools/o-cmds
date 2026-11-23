@@ -15,9 +15,19 @@ import (
 	"unicode"
 
 	"golang.org/x/sys/unix"
-	"ofam.dev/ochazuke"
-	"ofam.dev/oden"
 )
+
+// Actor is who changed a command, recorded on undo snapshots. Its JSON
+// shape is the one o-cmds has always written, so old history stays readable.
+type Actor struct {
+	Kind    string `json:"kind"`
+	Name    string `json:"name,omitempty"`
+	Harness string `json:"harness,omitempty"`
+	Pane    string `json:"pane,omitempty"`
+	Session string `json:"session,omitempty"`
+	Model   string `json:"model,omitempty"`
+	Via     *Actor `json:"via,omitempty"`
+}
 
 // Command metadata lives beside an ordinary, owner-editable shell script.
 // IDs and paths stay stable when a command is renamed.
@@ -90,7 +100,7 @@ func stampAuthor(getenv func(string) string, fallback string) Author {
 type Store struct {
 	Dir   string
 	Now   func() time.Time
-	Actor ochazuke.Actor
+	Actor Actor
 }
 
 func dataDir() (string, error) {
@@ -344,28 +354,24 @@ func resolve(rows []Command, target string) (Command, error) {
 		}
 		return Command{}, fmt.Errorf("command number %q not found", target)
 	}
-	commands := make([]*oden.Command, 0, len(rows))
+	// A unique name prefix resolves; several are ambiguous and listed.
+	var matches []Command
 	for _, row := range rows {
-		commands = append(commands, &oden.Command{Name: row.Name})
-	}
-	match := oden.NewCatalog("cmd", commands, nil, nil).Resolve(target)
-	if match.Resolved() {
-		for _, row := range rows {
-			if row.Name == match.Entry.Name {
-				return row, nil
-			}
+		if !row.Deleted && target != "" && strings.HasPrefix(row.Name, target) {
+			matches = append(matches, row)
 		}
 	}
-	if match.Ambiguous {
-		matched := make(map[string]bool, len(match.Candidates))
-		for _, candidate := range match.Candidates {
-			matched[candidate.Name] = true
-		}
+	if len(matches) == 1 {
+		return matches[0], nil
+	}
+	if len(matches) > 1 {
 		var message strings.Builder
 		fmt.Fprintf(&message, "command %q is ambiguous; matching commands:", target)
 		for i, row := range rows {
-			if matched[row.Name] {
-				fmt.Fprintf(&message, "\n  %d  %s", i+1, row.Name)
+			for _, m := range matches {
+				if m.ID == row.ID {
+					fmt.Fprintf(&message, "\n  %d  %s", i+1, row.Name)
+				}
 			}
 		}
 		return Command{}, fmt.Errorf("%s", message.String())
@@ -390,12 +396,12 @@ func (s *Store) Script(c Command) (string, error) {
 }
 
 type Snapshot struct {
-	Command  Command         `json:"command"`
-	Script   string          `json:"script"`
-	At       time.Time       `json:"at"`
-	Undone   bool            `json:"undone"`
-	By       ochazuke.Actor  `json:"by"`
-	UndoneBy *ochazuke.Actor `json:"undone_by,omitempty"`
+	Command  Command   `json:"command"`
+	Script   string    `json:"script"`
+	At       time.Time `json:"at"`
+	Undone   bool      `json:"undone"`
+	By       Actor     `json:"by"`
+	UndoneBy *Actor    `json:"undone_by,omitempty"`
 	// Batch groups the snapshots of one change over several commands
 	// (ChangeAll): undo restores them together.
 	Batch string `json:"batch,omitempty"`

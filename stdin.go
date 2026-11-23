@@ -8,8 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
-
-	"ofam.dev/ochazuke"
 )
 
 // StdinSource describes an explicit input. "none" leaves stdin inherited.
@@ -35,7 +33,7 @@ func (in *runInput) close() {
 	}
 }
 
-func (a *App) openInput(path, kind string) (*runInput, error) {
+func (a *Service) openInput(path, kind string) (*runInput, error) {
 	if path == "" {
 		return nil, nil
 	}
@@ -59,7 +57,7 @@ func (a *App) openInput(path, kind string) (*runInput, error) {
 		return fail(errors.New("stdin must be a regular file"))
 	}
 	h := sha256.New()
-	kept := cappedStream{limit: a.r.Settings().Int("jobs.max-bytes")}
+	kept := cappedStream{limit: a.maxBytes}
 	n, err := io.Copy(io.MultiWriter(h, &kept), f)
 	if err != nil {
 		return fail(err)
@@ -70,7 +68,7 @@ func (a *App) openInput(path, kind string) (*runInput, error) {
 	return &runInput{source: StdinSource{Kind: kind, Path: path, Bytes: n, SHA: fmt.Sprintf("%x", h.Sum(nil)), Kept: kept.Len(), Truncated: n > int64(kept.Len())}, file: f, kept: kept.Bytes()}, nil
 }
 
-func (a *App) inputForRun(r Run) (*runInput, error) {
+func (a *Service) inputForRun(r Run) (*runInput, error) {
 	switch r.Stdin.Kind {
 	case "", "none":
 		return nil, nil
@@ -86,60 +84,7 @@ func (a *App) inputForRun(r Run) (*runInput, error) {
 	}
 }
 
-func (a *App) clearInputNotice() {
-	if a.stdinNotice != 0 {
-		a.r.UI().ClearNotice(a.stdinNotice)
-		a.stdinNotice = 0
-	}
-}
-
-func (a *App) stdinFile(c ochazuke.Ctx, row Command) ochazuke.Result {
-	a.clearInputNotice()
-	if ochazuke.StringArg(c.Args, "stdin", "") != "" {
-		return a.runView(c, row)
-	}
-	if !a.tui {
-		return ochazuke.Failed(c.Need("stdin", "Choose a file to run with as stdin"))
-	}
-	if !a.r.Settings().Bool("view.stdin") {
-		return ochazuke.Failed(errors.New("stdin picker disabled by view.stdin"))
-	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		return ochazuke.Failed(err)
-	}
-	_, err = a.r.OpenPathChooser(ochazuke.PathChooserSpec{
-		Kind: "stdin-file", Title: "Stdin file: " + row.Name,
-		Pick: ochazuke.PathPick{Name: "stdin", Parameter: ochazuke.Parameter{Type: "path", Path: ochazuke.PathFile, Base: cwd}},
-		Choose: func(path string) ochazuke.Result {
-			in, err := a.openInput(path, "file")
-			if err != nil {
-				return ochazuke.Failed(err)
-			}
-			return a.executeInput(row, nil, false, in)
-		},
-	})
-	return result(nil, err)
-}
-
-func (a *App) recentInputs(ochazuke.PathPick) []string {
-	rows, err := a.store.Runs("")
-	if err != nil {
-		return nil
-	}
-	seen := map[string]bool{}
-	paths := []string{}
-	for i := len(rows) - 1; i >= 0; i-- {
-		source := rows[i].Stdin
-		if source.Kind == "file" && !seen[source.Path] {
-			paths = append(paths, source.Path)
-			seen[source.Path] = true
-		}
-	}
-	return paths
-}
-
-func (a *App) newInputBuffer() (string, error) {
+func (a *Service) newInputBuffer() (string, error) {
 	dir := filepath.Join(a.store.Dir, "tmp")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
@@ -170,38 +115,4 @@ func editedContent(path string, editorErr error) error {
 		return errEmptyInput
 	}
 	return nil
-}
-
-func (a *App) editStdin(c ochazuke.Ctx, row Command) ochazuke.Result {
-	if !a.tui {
-		return result(nil, a.runEdited(background(), row, stringList(c.Args["args"]), boolArg(c.Args, "assume-yes")))
-	}
-	if !a.r.Settings().Bool("view.stdin") {
-		return ochazuke.Failed(errors.New("stdin editor disabled by view.stdin"))
-	}
-	a.clearInputNotice()
-	path, err := a.newInputBuffer()
-	if err != nil {
-		return ochazuke.Failed(err)
-	}
-	return ochazuke.Foreground(editorCommand(background(), path)).Then(func(c ochazuke.Ctx, _ any, editorErr error) {
-		defer os.Remove(path)
-		if err := editedContent(path, editorErr); err != nil {
-			if editorErr != nil {
-				a.stdinNotice = c.Notify(err.Error())
-			} else {
-				c.Info(err.Error())
-			}
-			return
-		}
-		args := []any{}
-		for _, arg := range stringList(c.Args["args"]) {
-			args = append(args, arg)
-		}
-		// Execute synchronously prepares/opens the input before the temp name is removed.
-		_, err := a.r.ExecuteAt(c.Context, ochazuke.Do("cmd.run", ochazuke.Arguments{"target": row.ID, "args": args, "stdin": path, "stdin-kind": "edited", "assume-yes": boolArg(c.Args, "assume-yes")}).Request)
-		if err != nil {
-			c.Error(err.Error())
-		}
-	})
 }

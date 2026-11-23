@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -36,45 +35,5 @@ func TestScriptMarkdownKeepsLayoutAndOutfencesBackticks(t *testing.T) {
 	}
 	if got := scriptMarkdown("", ""); got != "```sh\n\n```\n" {
 		t.Fatalf("empty script: %q", got)
-	}
-}
-
-// The published catalog declares sections (rendered by every host) and keeps
-// the record fields for hosts with detail.sections off; the rows carry the
-// fields those sections read.
-func TestCatalogDetailSectionsAndRowFields(t *testing.T) {
-	s := fixture(t)
-	addCommand(t, s, "multi", "echo one\n\necho two\n")
-	out, e := invoke(t, s, "", "catalog")
-	if e != nil {
-		t.Fatal(e)
-	}
-	var doc struct {
-		Pages []struct {
-			ID     string
-			Detail struct {
-				Kind     string
-				Fields   []string
-				Sections []struct{ Kind, Field string }
-			}
-		}
-	}
-	if e = json.Unmarshal([]byte(out), &doc); e != nil {
-		t.Fatal(e)
-	}
-	if len(doc.Pages) != 1 || doc.Pages[0].Detail.Kind != "" || len(doc.Pages[0].Detail.Sections) != 2 || doc.Pages[0].Detail.Sections[1].Field != "detail_md" || len(doc.Pages[0].Detail.Fields) == 0 {
-		t.Fatalf("catalog detail=%+v", doc.Pages)
-	}
-	a, e := newApp(s, strings.NewReader(""), &strings.Builder{}, &strings.Builder{})
-	if e != nil {
-		t.Fatal(e)
-	}
-	rows, e := a.rows("")
-	if e != nil || len(rows) != 1 {
-		t.Fatalf("rows=%v err=%v", rows, e)
-	}
-	data := rows[0].Data.(map[string]any)
-	if data["detail_md"] != "```sh\necho one\n\necho two\n```\n" || data["author_label"] == "" {
-		t.Fatalf("row data=%v", data)
 	}
 }

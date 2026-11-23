@@ -1,8 +1,0 @@
-{
-  "name": "mounted commands open the full-screen script viewer inside the host UI",
-  "area": "cmds",
-  "host": true,
-  "commands": [{"name": "host-view", "script": "printf 'mounted-script-proof\\n'\n"}],
-  "script": ["v", "q"],
-  "expect": [{"after": 1, "modal": true, "contains": ["mounted-script-proof"]}, {"after": 2, "modal": false, "selected": "host-view"}]
-}

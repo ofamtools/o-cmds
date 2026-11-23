@@ -11,15 +11,19 @@ import (
 	"slices"
 	"strings"
 	"syscall"
-
-	"ofam.dev/oden"
 )
+
+// ExitError carries a script's exit status out of a CLI run: main exits
+// with Code and prints nothing more.
+type ExitError struct{ Code int }
+
+func (e *ExitError) Error() string { return fmt.Sprintf("exit status %d", e.Code) }
 
 // Runner is the only boundary that executes user scripts, editors or clipboard
 // helpers. Tests inject it for any potentially destructive script.
 type Runner func(*exec.Cmd) error
 
-// assumeYesEnv is ochazuke'"'"'s family-wide standing answer to a confirm
+// assumeYesEnv is ochazuke's family-wide standing answer to a confirm
 // (the shell reads it exactly as --yes). A run set to assume yes carries it in
 // its environment, for that run only.
 const assumeYesEnv = "OCHAZUKE_ASSUME_YES"
@@ -56,7 +60,7 @@ func exitError(err error) error {
 				code += int(status.Signal())
 			}
 		}
-		return &oden.ExitError{Code: code}
+		return &ExitError{Code: code}
 	}
 	return err
 }

@@ -30,46 +30,31 @@ type mcpTool struct {
 	InputSchema map[string]any `json:"inputSchema"`
 }
 
-// The MCP surface is an explicit allowlist over the app's verb descriptions.
-// Execution is deliberately absent from both discovery and dispatch.
-func (a *App) tools() []mcpTool {
-	allowed := []struct {
-		key, name string
-		params    []string
-		required  bool
-	}{
-		{"cmd.add", "cmd_add", []string{"name", "desc", "script", "cwd", "tags", "author"}, false},
-		{"cmd.list", "cmd_list", []string{"filter"}, false},
-		{"cmd.show-script", "cmd_show", []string{"target"}, true},
-		{"cmd.dismiss", "cmd_dismiss", []string{"target"}, true},
-		{"cmd.undismiss", "cmd_undismiss", []string{"target"}, true},
-		{"job.list", "job_list", []string{"command"}, false},
-		{"job.show-output", "job_show", []string{"job"}, true},
-	}
-	out := []mcpTool{}
-	for _, spec := range a.verbs() {
-		for _, tool := range allowed {
-			if tool.key != spec.noun+"."+spec.name {
-				continue
-			}
-			names := tool.params
-			props := map[string]any{}
-			for _, name := range names {
-				p := spec.params[name]
-				field := map[string]any{"type": p.Type, "description": p.Description}
-				if p.Type == "array" {
-					field["items"] = map[string]string{"type": "string"}
-				}
-				props[name] = field
-			}
-			schema := map[string]any{"type": "object", "properties": props, "additionalProperties": false}
-			if tool.required {
-				schema["required"] = names
-			}
-			out = append(out, mcpTool{Name: tool.name, Description: spec.description, InputSchema: schema})
+// The MCP surface is an explicit allowlist. Execution is deliberately
+// absent from both discovery and dispatch.
+func (a *Service) tools() []mcpTool {
+	str := func(desc string) map[string]any { return map[string]any{"type": "string", "description": desc} }
+	target := str("Command name, displayed number or stable ID")
+	tool := func(name, desc string, props map[string]any, required ...string) mcpTool {
+		schema := map[string]any{"type": "object", "properties": props, "additionalProperties": false}
+		if len(required) > 0 {
+			schema["required"] = required
 		}
+		return mcpTool{Name: name, Description: desc, InputSchema: schema}
 	}
-	return out
+	return []mcpTool{
+		tool("cmd_add", "Record a shell script, including an empty or unassociated one", map[string]any{
+			"name": str("Name; duplicates receive a suffix"), "desc": str("Description"), "script": str("Script text"),
+			"cwd": str("Working directory; absence is allowed"), "tags": map[string]any{"type": "array", "description": "Tags", "items": map[string]string{"type": "string"}},
+			"author": str("Author name; defaults to agent environment or owner"),
+		}),
+		tool("cmd_list", "List numbered commands; newest at the bottom by default", map[string]any{"filter": str("Match name, description or tags")}),
+		tool("cmd_show", "Read the command script", map[string]any{"target": target}, "target"),
+		tool("cmd_dismiss", "Mark a command seen without running it, so it no longer reads as new", map[string]any{"target": target}, "target"),
+		tool("cmd_undismiss", "Mark a dismissed command new again", map[string]any{"target": target}, "target"),
+		tool("job_list", "List runs, newest at the bottom; optionally filter by command", map[string]any{"command": str("Command name, number or ID")}),
+		tool("job_show", "Read labelled run output", map[string]any{"job": str("Job ID, unique prefix or global displayed number")}, "job"),
+	}
 }
 
 func toolContent(v any, err error) any {
@@ -88,7 +73,7 @@ func toolContent(v any, err error) any {
 	return map[string]any{"content": []any{map[string]string{"type": "text", "text": text}}, "isError": err != nil}
 }
 
-func (a *App) callTool(name string, raw json.RawMessage, client string) any {
+func (a *Service) callTool(name string, raw json.RawMessage, client string) any {
 	// Decode typed arguments rather than accepting a schema we cannot enforce.
 	decode := func(v any) error {
 		if len(raw) == 0 {
@@ -108,7 +93,7 @@ func (a *App) callTool(name string, raw json.RawMessage, client string) any {
 		}
 		id := ""
 		if p.Command != "" {
-			c, e := a.store.Resolve(p.Command, a.newestFirst())
+			c, e := a.resolve(p.Command)
 			if e != nil {
 				return toolContent(nil, e)
 			}
@@ -152,6 +137,7 @@ func (a *App) callTool(name string, raw json.RawMessage, client string) any {
 		if author.Harness == "" {
 			author.Harness = client
 		}
+		a.store.Actor = Actor{Kind: "agent", Name: author.Name, Harness: author.Harness}
 		c, e := a.store.Add(Add{Name: p.Name, Description: p.Desc, Script: script, Cwd: p.Cwd, Tags: p.Tags, Author: author})
 		return toolContent(c, e)
 	case "cmd_list":
@@ -161,7 +147,7 @@ func (a *App) callTool(name string, raw json.RawMessage, client string) any {
 		if e := decode(&p); e != nil {
 			return toolContent(nil, e)
 		}
-		rows, e := a.rows(p.Filter)
+		rows, e := a.listRows(p.Filter)
 		return toolContent(rows, e)
 	case "cmd_dismiss", "cmd_undismiss":
 		var p struct {
@@ -170,7 +156,7 @@ func (a *App) callTool(name string, raw json.RawMessage, client string) any {
 		if e := decode(&p); e != nil {
 			return toolContent(nil, e)
 		}
-		c, e := a.store.Resolve(p.Target, a.newestFirst())
+		c, e := a.resolve(p.Target)
 		if e != nil {
 			return toolContent(nil, e)
 		}
@@ -184,7 +170,7 @@ func (a *App) callTool(name string, raw json.RawMessage, client string) any {
 		if e := decode(&p); e != nil {
 			return toolContent(nil, e)
 		}
-		c, e := a.store.Resolve(p.Target, a.newestFirst())
+		c, e := a.resolve(p.Target)
 		if e != nil {
 			return toolContent(nil, e)
 		}
@@ -200,7 +186,7 @@ func (a *App) callTool(name string, raw json.RawMessage, client string) any {
 
 // Stdio framing and the initialize/tools lifecycle follow the family's tuios
 // MCP server: newline-delimited JSON-RPC, notifications receive no response.
-func (a *App) mcp() error {
+func (a *Service) mcp() error {
 	scan := bufio.NewScanner(a.in)
 	scan.Buffer(make([]byte, 64*1024), 16*1024*1024)
 	enc := json.NewEncoder(a.out)

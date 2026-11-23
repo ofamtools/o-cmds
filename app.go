@@ -2,570 +2,1564 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
-	"os/exec"
+	"maps"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
-	"ofam.dev/ochazuke"
-	ocli "ofam.dev/ochazuke/cli"
+	tea "charm.land/bubbletea/v2"
+
+	"ofam.dev/ochazuke/config"
+	"ofam.dev/ochazuke/core"
+	otea "ofam.dev/ochazuke/tea"
+	"ofam.dev/ochazuke/ui"
+	"ofam.dev/ochazuke/widgets/form"
+	"ofam.dev/ochazuke/widgets/input"
+	"ofam.dev/ochazuke/widgets/markdown"
+	"ofam.dev/ochazuke/widgets/picker"
+	"ofam.dev/ochazuke/widgets/table"
 )
 
-const version = "0.1.0"
-const pageID = "cmds"
-const listID = "cmds/commands"
+// Frame, node and view names.
+const (
+	pageID       = "main"
+	nodeList     = "list"
+	nodeFilter   = "filter"
+	modalPalette = "palette"
+	modalHelp    = "help"
+	modalForm    = "form"
+	modalViewer  = "viewer"
 
+	viewCommands = "commands"
+	viewJobs     = "jobs"
+
+	kindCommand = "cmds.command"
+	kindJob     = "cmds.job"
+)
+
+// list is one table view: its grid (rows, filter query, sort, cursor), the
+// filter's Readline line and the chosen sort key.
+type list struct {
+	Grid table.Model
+	Line input.Line
+	Sort int // index into the view's sort keys; -1 = list order
+}
+
+// runningJob tracks a captured run started by this TUI session.
+type runningJob struct{ CommandID, Name string }
+
+// App is the page state, kept by value in the page frame's Data. Handlers
+// get a private copy (clone) and the wrapper stores it back.
 type App struct {
-	store       *Store
-	r           *ochazuke.Runtime
-	in          io.Reader
-	out, errOut io.Writer
-	run         Runner
-	tui         bool
-	picking     *picker
-	changed     func()
-	stdinNotice ochazuke.NoticeID
-	// runCols is view.job-columns as read at start: the declared columns
-	// and the rows' cells must agree for the whole process.
-	runCols bool
+	View    string // viewCommands or viewJobs
+	Cmds    []cmdRow
+	Runs    []runRow
+	JobsFor string // command ID the Jobs view is narrowed to; "" = every job
+	Cmd     list
+	Job     list
+	Typing  bool // the filter line is open
+
+	Detail    bool
+	Ratio     float64
+	DetailOff int
+	detailKey string
+	JobOut    *RunOutput // the focused job's captured output, read after each step
+	jobOutKey string
+
+	Running map[string]runningJob // job ID -> running job, for runs this session started
+	Now     time.Time
+
+	Status, Tone string
+	Confirm      string
+	prevConfirm  string
 }
 
-type verbSpec struct {
-	noun              string
-	name, description string
-	params            map[string]ochazuke.Parameter
-	positional        []string
-	handler           ochazuke.AppHandler
-	rows              bool
-	creates           bool
-	many              bool
-	destructive       bool
-	confirm, agent    string
-	output            string
-	text, foreground  bool
-	slot              string
-	timeout           time.Duration
-	enabled           string
-	cli               func(context.Context, []string) error
+type sortKey struct{ key, title string }
+
+var sortKeys = map[string][]sortKey{
+	viewCommands: {{"num", "#"}, {"name", "Name"}, {"last_at", "Last"}, {"created", "Age"}, {"runs", "Runs"}, {"author", "Author"}},
+	viewJobs:     {{"num", "#"}, {"command", "Command"}, {"started_at", "Started"}, {"exit_code", "Exit"}, {"duration_ns", "Duration"}, {"state", "State"}},
 }
 
-// cmdColumns are the command table's columns. runs adds Last (last-run
-// age, dropped first at narrow widths) and Runs (the count since reset),
-// second from the right before Author; Runs drops last of the optional
-// columns, so it shows beside the detail pane at 120 columns.
-func cmdColumns(runs bool) []ochazuke.Column {
-	cols := []ochazuke.Column{
-		{Title: "#", Width: 5, Align: ochazuke.AlignRight},
-		{Title: "Name", Min: 12, Max: 28},
-		{Title: "Description", Min: 12},
-	}
-	if runs {
-		cols = append(cols, ochazuke.Column{Title: "Last", Width: 5, Priority: 4})
-	}
-	cols = append(cols, ochazuke.Column{Title: "Age", Width: 7, Priority: 3})
-	if runs {
-		cols = append(cols, ochazuke.Column{Title: "Runs", Width: 4, Align: ochazuke.AlignRight, Priority: 1})
-	}
-	return append(cols, ochazuke.Column{Title: "Author", Max: 24, Priority: 2})
+func (a App) clone() App {
+	a.Running = maps.Clone(a.Running)
+	a.Cmd.Grid, a.Job.Grid = a.Cmd.Grid.Copy(), a.Job.Grid.Copy()
+	a.Cmd.Line.Text, a.Job.Line.Text = slices.Clone(a.Cmd.Line.Text), slices.Clone(a.Job.Line.Text)
+	return a
 }
 
-// commandPage is the page the catalog publishes: its detail is built-in
-// sections, which every host renders without an o-cmds detail kind.
-func commandPage(detail bool) ocli.CatalogPage {
-	p := ocli.CatalogPage{ID: pageID, Title: "Commands", Layout: ocli.LayoutSplit, Lists: []ocli.CatalogList{{ID: listID, Noun: "cmd", Source: "cmd.list", Title: "Commands"}}}
-	if detail {
-		p.Detail = &ocli.CatalogDetail{Fields: detailFields, Sections: detailSections}
+// cur is the list of the shown view.
+func (a *App) cur() *list {
+	if a.View == viewJobs {
+		return &a.Job
 	}
-	return p
+	return &a.Cmd
 }
 
-// standalonePage is the page o-cmds mounts itself, where the script detail
-// kind is registered. Sections replace a kind, so view.detail-style=script
-// drops them for the numbered script view; markdown keeps the hosts' look.
-func standalonePage(r *ochazuke.Runtime) ocli.CatalogPage {
-	p := commandPage(r.Settings().Bool("view.detail"))
-	if p.Detail != nil && r.Settings().String("view.detail-style") == detailStyleScript {
-		p.Detail = &ocli.CatalogDetail{Kind: scriptDetailKind, Fields: detailFields}
-	}
-	return p
+func appOf(s core.State) App {
+	a, _ := s.Pages[pageID].Data.(App)
+	return a
 }
 
-// Namespace is the singular namespace o-cmds declares (lexicon plan): its
-// operations are cmd.<noun>.<verb> and a host mounts its catalog under it.
-const Namespace = "cmd"
-
-func init() {
-	if err := ochazuke.DeclareNamespace(Namespace); err != nil {
-		panic(err)
-	}
+func withApp(s core.State, a App) core.State {
+	f := s.Pages[pageID]
+	f.Data = a
+	s.Pages = maps.Clone(s.Pages)
+	s.Pages[pageID] = f
+	return s
 }
 
-func newApp(s *Store, in io.Reader, out, errOut io.Writer) (*App, error) {
-	a := &App{store: s, in: in, out: out, errOut: errOut, run: func(c *exec.Cmd) error { return c.Run() }}
-	a.r = ochazuke.NewRuntime()
-	a.r.Config().App = "o-cmds"
-	if err := a.r.DeclareSetting(
-		ochazuke.Setting{Name: "jobs.keep", Type: ochazuke.SettingInteger, Default: 20, Description: "Completed runs retained per command; 0 disables recording", Validate: nonnegative},
-		ochazuke.Setting{Name: "jobs.max-bytes", Type: ochazuke.SettingInteger, Default: 1024 * 1024, Description: "Bytes retained per stdout/stderr/stdin stream", Validate: nonnegative},
-		ochazuke.Setting{Name: "view.stdin", Type: ochazuke.SettingBoolean, Default: true, Description: "Enable TUI stdin file picker and editor actions"},
-		ochazuke.Setting{Name: "view.jobs", Type: ochazuke.SettingBoolean, Default: true, Description: "Show last-run status and enable the TUI history view"},
-		ochazuke.Setting{Name: "history.keep-open", Type: ochazuke.SettingBoolean, Default: true, Description: "Return from a run viewer to its history picker; off closes history when a run is picked"},
-		ochazuke.Setting{Name: "list.order", Type: ochazuke.SettingString, Default: "oldest-first", Enum: []string{"oldest-first", "newest-first"}, Description: "Command order, including numbered CLI targets"},
-		ochazuke.Setting{Name: "list.start-newest", Type: ochazuke.SettingBoolean, Default: true, Description: "Start the standalone page on the newest command"},
-		ochazuke.Setting{Name: "view.detail", Type: ochazuke.SettingBoolean, Default: true, Description: "Show the script and metadata beside the command list"},
-		ochazuke.Setting{Name: "view.detail-style", Type: ochazuke.SettingString, Default: detailStyleScript, Enum: []string{detailStyleScript, detailStyleMarkdown}, Description: "Standalone detail: script (numbered lines) or markdown (the metadata and code block catalog hosts show)"},
-		ochazuke.Setting{Name: "view.new-tone", Type: ochazuke.SettingString, Default: ochazuke.ToneQueued, Description: "Tone (a theme tone name) new commands, never run and not dismissed, draw in; empty turns the styling off", Validate: validTone},
-		ochazuke.Setting{Name: "view.job-columns", Type: ochazuke.SettingBoolean, Default: true, Description: "Show the Runs (count since reset) and Last (last-run age) columns; read at start"},
-		ochazuke.Setting{Name: "list.refresh", Type: ochazuke.SettingDuration, Default: 2 * time.Second, Description: "Reload the standalone list for agent additions; 0 disables polling"},
-	); err != nil {
-		return nil, err
+func (a *App) note(msg string) { a.Status, a.Tone = msg, "success" }
+func (a *App) info(msg string) { a.Status, a.Tone = msg, "info" }
+func (a *App) warn(msg string) { a.Status, a.Tone = msg, "warning" }
+func (a *App) fail(msg string) { a.Status, a.Tone = msg, "error" }
+
+// focusedCmd is the command under the cursor: the focused row, or in the
+// Jobs view the focused job's command.
+func (a *App) focusedCmd() (cmdRow, bool) {
+	id := ""
+	if a.View == viewJobs {
+		r, ok := a.focusedJob()
+		if !ok {
+			return cmdRow{}, false
+		}
+		id = r.CommandID
+	} else if row, ok := a.Cmd.Grid.FocusedRow(); ok {
+		id = row.ID
 	}
-	for _, spec := range a.verbs() {
-		b := a.r.DefineOwn(spec.noun).Verb(spec.name, func(c ochazuke.Ctx) ochazuke.Result {
-			a.store.Actor = c.Actor()
-			return spec.handler(c)
-		}, spec.description)
-		if len(spec.positional) > 0 {
-			b.Positional(spec.positional...)
+	for _, c := range a.Cmds {
+		if c.ID == id && id != "" {
+			return c, true
 		}
-		if spec.rows {
-			b.Rows(spec.noun).Fetch().Quiet().Table()
-		}
-		if spec.creates {
-			b.Creates()
-		}
-		if spec.many {
-			b.Many()
-		}
-		if spec.text {
-			b.TextResult()
-		}
-		if spec.foreground {
-			b.Foreground()
-		}
-		if spec.confirm != "" {
-			b.Confirm(spec.confirm)
-		}
-		if spec.agent != "" {
-			b.Agent(spec.agent)
-		}
-		if spec.destructive {
-			b.Destructive()
-		}
-		op := a.r.Operations.At(ochazuke.Key(spec.noun + "." + spec.name))
-		op.Parameters = spec.params
-		op.Slot, op.Timeout = spec.slot, spec.timeout
-		op.EnabledSetting = spec.enabled
-		a.r.Operations.Set(op)
 	}
-	a.r.SetRecentPaths(a.recentInputs)
-	a.r.DefineGuard("stdin-ui", func(r *ochazuke.Runtime, _ ochazuke.KeyEvent) bool { return r.Settings().Bool("view.stdin") })
-	a.r.DefineGuard("history-ui", func(r *ochazuke.Runtime, _ ochazuke.KeyEvent) bool { return r.Settings().Bool("view.jobs") })
-	a.runCols = a.r.Settings().Bool("view.job-columns")
-	a.r.Define("cmd").Main() // the tool's main noun: `o-cmds add` is `cmd add`
-	a.r.Define("cmd").Columns(cmdColumns(a.runCols)...).Props(a.cmdStoreProps()...).Store(a.cmdStore())
-	a.r.DefineOwn("job").Columns(runColumns...).Props(a.jobProps()...).Store(a.runStore())
-	// Every application key is a binding row. Help/footer hints read the
-	// runtime's effective bindings, including owner overrides.
-	a.r.Define("cmd").Mode("normal").
-		Bind("enter", ochazuke.Do("cmd.run", ochazuke.Arguments{"show": true})).
-		Bind("g Y", ochazuke.Do("cmd.run", ochazuke.Arguments{"show": true, "assume-yes": true})).
-		Bind("g i", ochazuke.Do("cmd.run-file").Guard("stdin-ui")).
-		Bind("g e", ochazuke.Do("cmd.edit-stdin").Guard("stdin-ui")).
-		Bind("g r", ochazuke.Do("cmd.rerun").Guard("history-ui")).
-		Bind("v", ochazuke.Do("cmd.show-script")).
-		Bind("H", ochazuke.Do("cmd.history").Guard("history-ui")).
-		Bind("y", ochazuke.Do("cmd.yank")).
-		Bind("e", ochazuke.Do("cmd.edit")).
-		Bind("d d", ochazuke.Do("cmd.delete")).
-		Bind("u", ochazuke.Do("cmd.undo")).
-		Bind("s", ochazuke.Do("cmd.star")).
-		Bind("x", ochazuke.Do("cmd.dismiss")).
-		Bind("X", ochazuke.Do("cmd.undismiss")).
-		Bind("R", ochazuke.Do("cmd.reset")).
-		Bind("o", ochazuke.Do("ochazuke.setting.cycle", ochazuke.Arguments{"name": "list.order"})).
-		Bind("ctrl+d", ochazuke.Do("ochazuke.detail.scroll", ochazuke.Arguments{"lines": 8}).Guard("detail-scrolls")).
-		Bind("ctrl+u", ochazuke.Do("ochazuke.detail.scroll", ochazuke.Arguments{"lines": -8}).Guard("detail-scrolls"))
-	registerScriptViewer(a.r)
-	if err := a.declareSetup(); err != nil {
-		return nil, err
-	}
-	if err := ocli.DeclarePage(a.r, commandPage(a.r.Settings().Bool("view.detail"))); err != nil {
-		return nil, err
-	}
-	if err := declarePickers(a.r); err != nil {
-		return nil, err
-	}
-	if err := a.loadDefaultBindings(); err != nil {
-		return nil, err
-	}
-	return a, nil
+	return cmdRow{}, false
 }
 
-func (a *App) shell() *ocli.Shell {
-	sh := ocli.New(a.r, "o-cmds", a.in, a.out, a.errOut)
-	sh.Version = version
-	sh.Reveal = func(target string) error {
-		row, err := a.store.Resolve(target, a.newestFirst())
-		if err != nil {
-			return err
-		}
-		list := a.r.List("cmd-targets")
-		if list == nil {
-			list, err = a.r.AddList("cmd-targets", nil)
-			if err != nil {
-				return err
-			}
-		}
-		return list.SetItems([]ochazuke.ListItem{{ID: target, Noun: "cmd", Label: row.Name, Data: map[string]any{"id": row.ID}}})
+func (a *App) focusedJob() (runRow, bool) {
+	row, ok := a.Job.Grid.FocusedRow()
+	if !ok {
+		return runRow{}, false
 	}
-	return sh
-}
-
-func param(desc string) ochazuke.Parameter {
-	return ochazuke.Parameter{Type: "string", Description: desc}
-}
-
-func required(desc string) ochazuke.Parameter {
-	p := param(desc)
-	p.Required = true
-	return p
-}
-
-func (a *App) specs() []verbSpec {
-	target := param("Command name, displayed number or stable ID (defaults to selected row)")
-	// focused is the same parameter for a verb that acts on one command: from a
-	// key, the help or the palette it names the focused command row, and the
-	// args form says so. A verb that takes the marked rows (many) keeps target
-	// plain, since the marks are its source.
-	focused := target
-	focused.From = ochazuke.SourceRow + ":id"
-	specs := []verbSpec{
-		{name: "show-script", description: "Read the command script in a text viewer", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.view), text: true, output: "raw"},
-		{name: "run-file", description: "Choose a stdin file and read the captured run", params: map[string]ochazuke.Parameter{"target": focused, "stdin": {Type: "path", Path: ochazuke.PathFile, Required: true, Description: "File to use as stdin"}}, positional: []string{"target", "stdin"}, handler: a.on(a.runView), text: true, slot: "run", timeout: 15 * time.Minute, enabled: "view.stdin"},
-		{name: "history", description: "Open full-screen command history on the terminal", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.history), foreground: true, cli: a.historyCLI, enabled: "view.jobs"},
-		{name: "stdin-file", description: "Choose a file to run with as stdin", params: map[string]ochazuke.Parameter{"target": focused, "stdin": fileParam("File to use as stdin")}, positional: []string{"target", "stdin"}, handler: a.on(a.stdinFile), text: true, slot: "run", timeout: 15 * time.Minute, enabled: "view.stdin"},
-		{name: "edit-stdin", foreground: true, description: "Edit an empty buffer and run with it as stdin", params: map[string]ochazuke.Parameter{"target": focused, "args": {Type: "array"}}, positional: []string{"target"}, handler: a.on(a.editStdin), enabled: "view.stdin", cli: func(ctx context.Context, args []string) error {
-			return a.runCLI(ctx, append([]string{"--edit-stdin"}, args...))
-		}},
-		{name: "rerun", foreground: true, description: "Repeat the latest run with its original args, cwd and stdin", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.rerunLast), cli: a.rerunLastCLI, enabled: "view.jobs"},
-		{name: "jobs", description: "List a command's jobs (its run history), newest at the bottom", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.commandRuns), output: "run-table"},
-		{name: "jobs-clear", description: "Remove a command's captured run history", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.clearRuns), destructive: true},
-		{name: "add", creates: true, description: "Record a shell script, including an empty or unassociated one", params: map[string]ochazuke.Parameter{"name": param("Name; duplicates receive a suffix"), "desc": param("Description"), "file": fileParam("Read script from a file, or - for stdin"), "script": param("Script text"), "cwd": dirParam("Working directory; absence is allowed"), "tags": {Type: "array", Description: "Tags"}, "author": param("Author name; defaults to agent environment or owner")}, handler: a.add},
-		{name: "list", description: "List numbered commands; newest at the bottom by default", params: map[string]ochazuke.Parameter{"filter": param("Match name, description or tags")}, handler: a.list, rows: true, output: "table"},
-		{name: "run", text: true, slot: "run", timeout: 15 * time.Minute, description: "Run with sh in the recorded cwd, streaming output and preserving exit status", params: map[string]ochazuke.Parameter{"target": focused, "args": {Type: "array", Description: "Script arguments (CLI also accepts -- args...)"}, "stdin": {Type: "path", Path: ochazuke.PathFile, Description: "File to use as stdin"}, "edit-stdin": {Type: "boolean", Description: "Edit an empty stdin buffer"}, "show": {Type: "boolean", Description: "Capture both streams and read stdout, stderr and the exit status in a viewer instead of streaming to the terminal"}, "stdin-kind": {Type: "string", Enum: []string{"file", "edited"}, Description: "Input provenance; edited retains input for reruns"}, "assume-yes": {Type: "boolean", Description: "Run with OCHAZUKE_ASSUME_YES=1 so ochazuke tools answer their confirm prompts yes; recorded on the job and repeated by a rerun"}}, positional: []string{"target"}, handler: a.on(a.runOrShow), cli: a.runLeaf},
-		{name: "yank", description: "Copy the script to the clipboard; answers the script", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.yank), output: "script"},
-		{name: "edit", foreground: true, description: "Open $VISUAL/$EDITOR on the script; checkpoint its current contents for undo", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.edit)},
-		{name: "delete", description: "Hide a command immediately, retaining its script and undo history; agents use cmd.archive", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.archive(true)), agent: ochazuke.AgentNever},
-		{name: "undo", description: "Undo the most recent rename, delete, archive, restore, edit, pin, dismiss or reset change", handler: a.undo},
-		{name: "dismiss", description: "Mark a command (or the selected rows) seen without running it, so it no longer reads as new", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.dismiss(), many: true, agent: ochazuke.AgentAllow},
-		{name: "undismiss", description: "Mark a dismissed command (or the selected rows) new again", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.undismiss(), many: true, agent: ochazuke.AgentAllow},
-		{name: "reset", description: "Forget a command's runs: count to 0, new again; retained run records stay (cmd jobs-clear deletes them)", params: map[string]ochazuke.Parameter{"target": target}, positional: []string{"target"}, handler: a.reset(), many: true, confirm: "Reset the run count of {{label}} to 0? Retained run records stay; undo restores the count.", agent: ochazuke.AgentAllow},
-		{name: "pin", description: "Pin a command without moving its chronological position", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.pin(true))},
-		{name: "unpin", description: "Unpin a command", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.pin(false))},
-		{name: "star", description: "Toggle a command's pin", params: map[string]ochazuke.Parameter{"target": focused}, positional: []string{"target"}, handler: a.on(a.star)},
-	}
-	return append(specs, a.fileSpecs()...)
-}
-
-func (a *App) newestFirst() bool { return a.r.Settings().String("list.order") == "newest-first" }
-
-func (a *App) target(c ochazuke.Ctx) (Command, error) {
-	t := ochazuke.StringArg(c.Args, "target", "")
-	if t == "" && c.Instance != nil {
-		switch d := c.Instance.Data.(type) {
-		case string:
-			t = d
-		case map[string]any:
-			t, _ = d["id"].(string)
-		}
-		if t == "" {
-			t = c.Instance.ID
+	for _, r := range a.Runs {
+		if r.ID == row.ID {
+			return r, true
 		}
 	}
-	if t == "" {
-		return Command{}, fmt.Errorf("name a command or displayed number")
-	}
-	return a.store.Resolve(t, a.newestFirst())
+	return runRow{}, false
 }
 
-func (a *App) on(fn func(ochazuke.Ctx, Command) ochazuke.Result) ochazuke.AppHandler {
-	return func(c ochazuke.Ctx) ochazuke.Result {
-		row, err := a.target(c)
-		if err != nil {
-			return ochazuke.Failed(err)
+func focusRow(g *table.Model, id string) bool {
+	for i, it := range g.Items() {
+		if !it.Header && it.Row.ID == id {
+			g.SelectedIdx = i
+			g.Focused()
+			return true
 		}
-		return fn(c, row)
 	}
+	return false
 }
 
-func result(v any, err error) ochazuke.Result {
+// load rereads the store and rebuilds both tables, keeping each cursor on
+// the same record when it is still listed.
+func (env *Env) load(a *App) {
+	rows, err := env.Svc.rows("")
 	if err != nil {
-		return ochazuke.Failed(err)
+		a.fail("load commands: " + err.Error())
+		return
 	}
-	return ochazuke.Done(v)
-}
-func (a *App) refresh() {
-	if a.changed != nil {
-		a.changed()
-	}
-}
-
-func stringList(v any) []string {
-	switch v := v.(type) {
-	case []string:
-		return v
-	case []any:
-		out := make([]string, 0, len(v))
-		for _, x := range v {
-			out = append(out, fmt.Sprint(x))
-		}
-		return out
-	case string:
-		var out []string
-		if json.Unmarshal([]byte(v), &out) == nil {
-			return out
-		}
-		if v != "" {
-			return []string{v}
-		}
-	}
-	return nil
-}
-
-func (a *App) add(c ochazuke.Ctx) ochazuke.Result {
-	if _, hasScript := c.Args["script"]; !hasScript || ochazuke.StringArg(c.Args, "file", "") != "" {
-		if a.tui && ochazuke.StringArg(c.Args, "file", "") == "" {
-			return ochazuke.Pending(func(context.Context) (any, error) {
-				return a.readScript(strings.NewReader(""), c.Args, "text", "")
-			}).Then(func(ochazuke.Ctx, any, error) { a.refresh() })
-		}
-		return a.importScript(c)
-	}
-	return ochazuke.Pending(func(context.Context) (any, error) {
-		return a.readScript(strings.NewReader(ochazuke.StringArg(c.Args, "script", "")), c.Args, "text", "")
-	}).Then(func(ochazuke.Ctx, any, error) { a.refresh() })
-}
-
-func age(at, now time.Time) string {
-	d := now.Sub(at)
-	if d < time.Minute {
-		return "now"
-	}
-	if d < time.Hour {
-		return fmt.Sprintf("%dm", int(d.Minutes()))
-	}
-	if d < 24*time.Hour {
-		return fmt.Sprintf("%dh", int(d.Hours()))
-	}
-	return fmt.Sprintf("%dd", int(d.Hours()/24))
-}
-
-func (a *App) rows(filter string) ([]ocli.Row, error) {
-	cs, e := a.store.records(!a.r.Settings().Bool("collection.hide-archived"))
-	if e != nil {
-		return nil, e
-	}
-	if a.newestFirst() {
-		slices.Reverse(cs)
-	}
-	out := []ocli.Row{}
-	filter = strings.ToLower(filter)
-	lastRuns := map[string]Run{}
-	runs, err := a.store.Runs("")
+	runs, err := env.Svc.runRows("")
 	if err != nil {
-		return nil, err
+		a.fail("load jobs: " + err.Error())
+		return
 	}
-	if a.r.Settings().Bool("view.jobs") {
-		for _, r := range runs {
-			lastRuns[r.CommandID] = r
-		}
+	a.Cmds, a.Runs, a.Now = rows, runs, env.now()
+	a.jobOutKey = "" // a running job's output may have grown
+	env.rebuild(a)
+}
+
+func (env *Env) rebuild(a *App) {
+	keepC, okC := a.Cmd.Grid.FocusedRow()
+	keepJ, okJ := a.Job.Grid.FocusedRow()
+	a.Cmd.Grid.Columns = cmdColumns(env.JobCols)
+	a.Cmd.Grid.Rows = cmdTableRows(a.Cmds, a.Now)
+	a.Job.Grid.Columns = jobColumns()
+	a.Job.Grid.Rows = jobTableRows(a.Runs, a.JobsFor)
+	if okC {
+		focusRow(&a.Cmd.Grid, keepC.ID)
 	}
-	tone, now := a.newTone(), a.store.now()
-	number := 0
-	for _, c := range cs {
-		cellNumber := "-"
-		if !c.Deleted {
-			number++
-			cellNumber = strconv.Itoa(number)
-		}
-		if !strings.Contains(strings.ToLower(c.Name+" "+c.Description+" "+strings.Join(c.Tags, " ")), filter) {
-			continue
-		}
-		text, e := a.store.Script(c)
-		if e != nil {
-			return nil, e
-		}
-		// Match the object shape a catalog host obtains by decoding JSON.
-		// PageView's field renderer consumes maps rather than Go structs.
-		encoded, e := json.Marshal(c)
-		if e != nil {
-			return nil, e
-		}
-		var data map[string]any
-		if e = json.Unmarshal(encoded, &data); e != nil {
-			return nil, e
-		}
-		data["script"] = text
-		data["script_path"] = c.Path
-		data["path"] = a.store.Dir
-		data["detail_md"] = scriptMarkdown(text, c.Path)
-		data["age"] = age(c.Created, now)
-		if run, ok := lastRuns[c.ID]; ok {
-			data["last_run"] = runSummary(run)
-		}
-		st := commandStatusOf(c, runs)
-		data["runs"], data["status"] = st.Count, st.Status
-		if st.Last != nil {
-			data["last_run_at"] = st.Last.Format(time.RFC3339)
-			data["last_run_age"] = age(*st.Last, now)
+	if okJ {
+		focusRow(&a.Job.Grid, keepJ.ID)
+	}
+	a.Cmd.Grid.Focused()
+	a.Job.Grid.Focused()
+}
+
+func cmdColumns(jobCols bool) []table.Column {
+	cols := []table.Column{{Key: "num", Title: "#", Width: 4, Align: "right"}, {Key: "name", Title: "Name", Width: 24}, {Key: "desc", Title: "Description"}}
+	if jobCols {
+		cols = append(cols, table.Column{Key: "last", Title: "Last", Width: 5})
+	}
+	cols = append(cols, table.Column{Key: "age", Title: "Age", Width: 5})
+	if jobCols {
+		cols = append(cols, table.Column{Key: "runs", Title: "Runs", Width: 4, Align: "right"})
+	}
+	return append(cols, table.Column{Key: "author", Title: "Author", Width: 14})
+}
+
+func jobColumns() []table.Column {
+	return []table.Column{
+		{Key: "num", Title: "#", Width: 4, Align: "right"}, {Key: "command", Title: "Command", Width: 20},
+		{Key: "started", Title: "Started", Width: 19}, {Key: "exit", Title: "Exit", Width: 6, Align: "right"},
+		{Key: "duration", Title: "Duration", Width: 9, Align: "right"}, {Key: "state", Title: "State", Width: 8},
+		{Key: "io", Title: "Out/Err"},
+	}
+}
+
+func cmdTableRows(cmds []cmdRow, now time.Time) []table.Row {
+	out := make([]table.Row, 0, len(cmds))
+	for _, c := range cmds {
+		num := "-"
+		if c.Number > 0 {
+			num = strconv.Itoa(c.Number)
 		}
 		name := c.Name
 		if c.Pinned {
 			name = "★ " + name
 		}
-		author := c.Author.Name
-		if c.Author.Harness != "" && c.Author.Harness != author {
-			author += "/" + c.Author.Harness
+		lastAt := ""
+		if c.Status.Last != nil {
+			lastAt = c.Status.Last.UTC().Format(time.RFC3339Nano)
 		}
-		if c.Author.Pane != "" {
-			author += "@" + c.Author.Pane
+		cells := map[string]any{
+			"num": num, "name": name, "desc": oneLine(c.Description), "last": lastCell(c.Status, now), "age": age(c.Created, now),
+			"runs": c.Status.Count, "author": c.Author, "last_at": lastAt, "created": c.Created.UTC().Format(time.RFC3339Nano),
+			"tags": strings.Join(c.Tags, " "), "status": c.Status.Status,
 		}
-		data["author_label"] = author
-		cells := []string{cellNumber, name, c.Description}
-		if a.runCols {
-			cells = append(cells, lastCell(st, now), age(c.Created, now), strconv.Itoa(st.Count), author)
+		if c.Number > 0 {
+			cells["num"] = c.Number
+		}
+		out = append(out, table.Row{ID: c.ID, Ref: &core.Ref{Kind: kindCommand, ID: c.ID}, Cells: cells, Unread: c.Status.Status == statusNew})
+	}
+	return out
+}
+
+func jobTableRows(runs []runRow, only string) []table.Row {
+	out := make([]table.Row, 0, len(runs))
+	for _, r := range runs {
+		if only != "" && r.CommandID != only {
+			continue
+		}
+		code := -1
+		if r.ExitCode != nil {
+			code = *r.ExitCode
+		}
+		name := r.CommandName
+		if r.Script != nil {
+			name = "line: " + oneLine(*r.Script)
+		}
+		dur := "-"
+		if r.Ended != nil {
+			dur = r.Duration.Round(time.Millisecond).String()
+		}
+		state := runState(r.Run)
+		if r.AssumeYes {
+			state += " Y"
+		}
+		cut := ""
+		if r.StdoutCut || r.StderrCut {
+			cut = " cut"
+		}
+		cells := map[string]any{
+			"num": r.Number, "command": name, "started": r.Started.Local().Format("2006-01-02 15:04:05"), "exit": runExit(r.Run),
+			"duration": dur, "state": state, "io": fmt.Sprintf("%d/%d B%s", r.StdoutBytes, r.StderrBytes, cut),
+			"started_at": r.Started.UTC().Format(time.RFC3339Nano), "exit_code": code, "duration_ns": int64(r.Duration),
+		}
+		out = append(out, table.Row{ID: r.ID, Ref: &core.Ref{Kind: kindJob, ID: r.ID}, Cells: cells})
+	}
+	return out
+}
+
+// --- environment ------------------------------------------------------------
+
+// Env is the session configuration shared by handlers and the view, plus
+// the service that reads and writes the store.
+type Env struct {
+	Svc        *Service
+	Km         *core.Keymap
+	Bindings   []core.Binding
+	Specs      []core.CommandSpec
+	Theme      ui.Theme
+	Copy       func(string) error // nil: yanks stay in the status line only
+	Match      table.MatchMode
+	Ratio      float64
+	StackW     int
+	Detail     bool
+	JobCols    bool
+	ShowOutput bool          // open the output viewer when a captured run ends
+	Refresh    time.Duration // reload period; 0 = never
+	StartNew   bool          // start on the newest command
+	Notes      []string
+	Now        func() time.Time
+	Picked     *string // pick mode: the chosen script lands here
+
+	jobs sync.Map // job ID -> chan struct{} closed when its run returns
+}
+
+func (env *Env) now() time.Time {
+	if env.Now != nil {
+		return env.Now()
+	}
+	return time.Now()
+}
+
+// Config is what main (or a test) supplies to build an Env.
+type Config struct {
+	Bindings []core.Binding   // user overrides, merged ahead of the defaults
+	Theme    *ui.Theme        // nil: the default dark theme
+	Settings *config.Settings // nil: defaults
+	Copy     func(string) error
+	Notes    []string
+	Pick     bool // enter chooses a script (o-cmds pick) instead of running it
+}
+
+var modes = []core.Mode{{Name: "normal"}, {Name: "input"}, {Name: "palette"}, {Name: "help"}, {Name: "form"}, {Name: "viewer"}}
+
+func newEnv(svc *Service, cfg Config) *Env {
+	env := &Env{Svc: svc, Theme: ui.DefaultDarkTheme(), Copy: cfg.Copy, Notes: cfg.Notes}
+	if cfg.Theme != nil {
+		env.Theme = *cfg.Theme
+	}
+	set := cfg.Settings
+	if set == nil {
+		set, _ = config.LoadSettings(nil, defaultSettings)
+	}
+	switch m := table.MatchMode(set.String("matchMode", "substring")); m {
+	case table.MatchSubstring, table.MatchFuzzy, table.MatchRegex:
+		env.Match = m
+	default:
+		env.Match = table.MatchSubstring
+		env.Notes = append(env.Notes, "settings: matchMode must be substring, fuzzy or regex")
+	}
+	env.Ratio = min(max(set.Float("detailRatio", 0.55), 0.2), 0.8)
+	env.StackW = set.Int("stackWidth", 110)
+	env.Detail = set.Bool("view.detail", true)
+	env.JobCols = set.Bool("view.job-columns", true)
+	env.ShowOutput = set.Bool("view.run-output", true)
+	env.StartNew = set.Bool("list.start-newest", true)
+	env.Refresh = time.Duration(max(set.Float("list.refresh", 2), 0) * float64(time.Second))
+	env.Specs = commandSpecs()
+	user := cfg.Bindings
+	if cfg.Pick {
+		// Pick mode is one more binding row: enter chooses instead of runs.
+		user = append([]core.Binding{bs(viewCommands, "normal", "enter", "cmd.pick", "choose")}, user...)
+	}
+	for _, d := range config.CheckBindings(modes, cfg.Bindings, env.Specs...) {
+		if d.Severity == config.SevError {
+			env.Notes = append(env.Notes, fmt.Sprintf("bindings.json #%d: %s", d.Index, d.Message))
+		}
+	}
+	env.Bindings = config.MergeBindings(defaultBindings(), user)
+	km, err := core.NewKeymap(modes, env.Bindings, env.Specs...)
+	if err != nil && len(env.Notes) == 0 {
+		env.Notes = append(env.Notes, "bindings: "+strings.ReplaceAll(err.Error(), "\n", "; "))
+	}
+	env.Km = km
+	return env
+}
+
+// --- commands and bindings ------------------------------------------------------
+
+func commandSpecs() []core.CommandSpec {
+	user := func(id, desc string) core.CommandSpec {
+		return core.CommandSpec{ID: id, Description: desc, Tags: []string{"user"}}
+	}
+	internal := func(id, desc string) core.CommandSpec { return core.CommandSpec{ID: id, Description: desc} }
+	specs := []core.CommandSpec{
+		user("cmd.run", "Run the focused command with its output captured as a job"),
+		user("cmd.run.yes", "Run the focused command with OCHAZUKE_ASSUME_YES=1 (recorded; reruns repeat it)"),
+		user("cmd.run.terminal", "Run the focused command on the terminal, suspending the UI"),
+		user("cmd.rerun", "Repeat the focused command's latest job: its args, cwd, stdin and assume-yes"),
+		user("cmd.add", "Record a new command in a form"),
+		user("cmd.edit", "Edit the focused command's name, description, cwd and tags"),
+		user("cmd.edit.script", "Open $VISUAL/$EDITOR on the focused command's script (undo restores it)"),
+		user("cmd.delete", "Delete the focused command (its script and history stay; u undoes)"),
+		user("cmd.undo", "Undo the most recent add, edit, delete, pin, dismiss or reset"),
+		user("cmd.pin", "Pin or unpin the focused command"),
+		user("cmd.dismiss", "Mark the focused command seen without running it"),
+		user("cmd.undismiss", "Mark the focused command new again"),
+		user("cmd.reset", "Forget the focused command's run count (press twice)"),
+		user("cmd.view", "Read the focused command's script full screen"),
+		user("cmd.yank", "Copy the focused command's script to the clipboard"),
+		user("cmd.jobs", "Show the focused command's jobs"),
+		user("cmd.pick", "Choose the focused command's script and quit (o-cmds pick)"),
+		user("job.view", "Read the focused job's output full screen"),
+		user("job.rerun", "Rerun the focused job with its args, cwd, stdin and assume-yes"),
+		user("job.cancel", "Cancel the focused running job (in Commands: the command's newest running job)"),
+		user("job.delete", "Delete the focused job and its captured streams"),
+		user("view.toggle", "Switch between the Commands and Jobs tables"),
+		user("filter.open", "Filter the shown table"),
+		user("filter.mode.cycle", "Cycle the filter match mode: substring, fuzzy, regex"),
+		user("filter.clear", "Clear the filter"),
+		user("sort.cycle", "Sort the shown table by the next column (then list order)"),
+		user("sort.reverse", "Reverse the sort direction"),
+		user("order.toggle", "Number commands oldest-first or newest-first"),
+		user("detail.toggle", "Show or hide the detail pane"),
+		user("detail.scroll.down", "Scroll the detail pane down"),
+		user("detail.scroll.up", "Scroll the detail pane up"),
+		user("split.grow", "Widen the list next to the detail pane"),
+		user("split.shrink", "Narrow the list next to the detail pane"),
+		user("list.reload", "Reload commands and jobs from disk"),
+		user("palette.open", "Open the command palette"),
+		user("help.open", "Show the active key bindings"),
+		user("app.close", "Quit"),
+
+		internal("input.accept", "Keep the filter and return to the table"),
+		internal("input.cancel", "Clear the filter and return to the table"),
+		internal(input.CmdInsert, "Type into the filter"),
+		internal("palette.insert", "Type into the palette query"),
+		internal("palette.backspace", "Delete the last query character"),
+		internal("palette.close", "Close the palette"),
+		internal(picker.CmdConfirm, "Run the highlighted command"),
+		internal(picker.CmdModeCycle, "Cycle the match mode"),
+		internal("help.close", "Close help"),
+		internal("viewer.close", "Close the viewer"),
+		internal(form.CmdInsert, "Type into the field"),
+		internal(form.CmdBackspace, "Delete the last character"),
+		internal("form.clear", "Clear the field"),
+		internal(form.CmdSubmit, "Save the form"),
+		internal(form.CmdCancel, "Discard the form"),
+		internal("run.done", "A job finished"),
+		internal("run.cancelled", "A job was cancelled"),
+		internal("edit.done", "The editor closed"),
+		internal("yank.done", "Clipboard copy finished"),
+		internal("data.poll", "Periodic reload"),
+	}
+	return append(specs, input.ReadlineSpecs()...)
+}
+
+func b(mode, keys, cmd, hint string) core.Binding {
+	return core.Binding{Mode: mode, Keys: strings.Fields(keys), Command: cmd, Hint: hint}
+}
+
+// bs is a binding that fires only in one view (the page node's scope).
+func bs(scope, mode, keys, cmd, hint string) core.Binding {
+	bd := b(mode, keys, cmd, hint)
+	bd.Scope = scope
+	return bd
+}
+
+func class(mode, cls, cmd string, args map[string]any, hint string) core.Binding {
+	return core.Binding{Mode: mode, Class: cls, Command: cmd, Args: args, Hint: hint}
+}
+
+// rowMotions are the standard motions a table uses.
+var rowMotions = []string{"motion.down", "motion.up", "motion.top", "motion.bottom", "motion.page.down", "motion.page.up", "motion.half.down", "motion.half.up"}
+
+func standard(mode string) []core.Binding {
+	var out []core.Binding
+	for _, bd := range core.StandardBindings(mode) {
+		if slices.Contains(rowMotions, bd.Command) || bd.Command == core.CmdCountPush {
+			out = append(out, bd)
+		}
+	}
+	return out
+}
+
+func defaultBindings() []core.Binding {
+	text := map[string]any{"text": "$text"}
+	out := []core.Binding{
+		bs(viewCommands, "normal", "enter", "cmd.run", "run"),
+		bs(viewCommands, "normal", "g Y", "cmd.run.yes", "run, assume yes"),
+		bs(viewCommands, "normal", "!", "cmd.run.terminal", "run on terminal"),
+		bs(viewCommands, "normal", "g r", "cmd.rerun", "rerun last"),
+		b("normal", "a", "cmd.add", "add"),
+		bs(viewCommands, "normal", "e", "cmd.edit", "edit"),
+		bs(viewCommands, "normal", "E", "cmd.edit.script", "edit script"),
+		bs(viewCommands, "normal", "d d", "cmd.delete", "delete"),
+		b("normal", "u", "cmd.undo", "undo"),
+		bs(viewCommands, "normal", "p", "cmd.pin", "pin"),
+		bs(viewCommands, "normal", "x", "cmd.dismiss", "dismiss"),
+		bs(viewCommands, "normal", "X", "cmd.undismiss", "undismiss"),
+		bs(viewCommands, "normal", "R", "cmd.reset", "reset runs"),
+		b("normal", "v", "cmd.view", "view script"),
+		b("normal", "y", "cmd.yank", "copy script"),
+		bs(viewCommands, "normal", "J", "cmd.jobs", "jobs of command"),
+		bs(viewJobs, "normal", "enter", "job.view", "view output"),
+		bs(viewJobs, "normal", "g r", "job.rerun", "rerun"),
+		bs(viewJobs, "normal", "r", "job.rerun", "rerun"),
+		bs(viewJobs, "normal", "g Y", "cmd.run.yes", "run command, assume yes"),
+		bs(viewJobs, "normal", "d d", "job.delete", "delete job"),
+		b("normal", "C", "job.cancel", "cancel job"),
+		b("normal", "tab", "view.toggle", "commands/jobs"),
+		b("normal", "/", "filter.open", "filter"),
+		b("normal", "alt+m", "filter.mode.cycle", "match mode"),
+		b("normal", "esc", "filter.clear", "clear filter"),
+		b("normal", "s", "sort.cycle", "sort"),
+		b("normal", "S", "sort.reverse", "reverse sort"),
+		b("normal", "o", "order.toggle", "number order"),
+		b("normal", "w", "detail.toggle", "detail"),
+		b("normal", "ctrl+w j", "detail.scroll.down", "scroll detail down"),
+		b("normal", "ctrl+w k", "detail.scroll.up", "scroll detail up"),
+		b("normal", "ctrl+w >", "split.grow", "wider list"),
+		b("normal", "ctrl+w <", "split.shrink", "narrower list"),
+		b("normal", "ctrl+l", "list.reload", "reload"),
+		b("normal", ":", "palette.open", "commands"),
+		b("normal", "?", "help.open", "help"),
+		b("normal", "q", "app.close", "quit"),
+		b("normal", "ctrl+c", "app.close", "quit"),
+	}
+	out = append(out, standard("normal")...)
+	out = append(out,
+		class("input", core.ClassPrintable, input.CmdInsert, text, "type"),
+		class("input", core.ClassPaste, input.CmdInsert, text, "paste"),
+		b("input", "enter", "input.accept", "keep filter"),
+		b("input", "esc", "input.cancel", "clear filter"),
+		b("input", "ctrl+c", "input.cancel", "clear filter"),
+		b("input", "tab", "filter.mode.cycle", "match mode"),
+		b("input", "alt+m", "filter.mode.cycle", "match mode"),
+		b("input", "down", "motion.down", "next row"),
+		b("input", "ctrl+n", "motion.down", "next row"),
+		b("input", "up", "motion.up", "previous row"),
+		b("input", "ctrl+p", "motion.up", "previous row"),
+
+		class("palette", core.ClassPrintable, "palette.insert", text, "type"),
+		class("palette", core.ClassPaste, "palette.insert", text, "paste"),
+		b("palette", "backspace", "palette.backspace", "delete"),
+		b("palette", "enter", picker.CmdConfirm, "run"),
+		b("palette", "esc", "palette.close", "close"),
+		b("palette", "ctrl+c", "palette.close", "close"),
+		b("palette", "tab", picker.CmdModeCycle, "match mode"),
+		b("palette", "alt+m", picker.CmdModeCycle, "match mode"),
+		b("palette", "down", "motion.down", "next"),
+		b("palette", "ctrl+n", "motion.down", "next"),
+		b("palette", "up", "motion.up", "previous"),
+		b("palette", "ctrl+p", "motion.up", "previous"),
+
+		class("form", core.ClassPrintable, form.CmdInsert, text, "type"),
+		class("form", core.ClassPaste, form.CmdInsert, text, "paste"),
+		b("form", "backspace", form.CmdBackspace, "delete"),
+		b("form", "tab", "motion.down", "next field"),
+		b("form", "down", "motion.down", "next field"),
+		b("form", "shift+tab", "motion.up", "previous field"),
+		b("form", "up", "motion.up", "previous field"),
+		b("form", "enter", form.CmdSubmit, "save"),
+		b("form", "esc", form.CmdCancel, "cancel"),
+		b("form", "ctrl+c", form.CmdCancel, "cancel"),
+
+		b("viewer", "esc", "viewer.close", "close"),
+		b("viewer", "q", "viewer.close", "close"),
+		b("viewer", "enter", "viewer.close", "close"),
+		b("viewer", "ctrl+c", "viewer.close", "close"),
+		b("viewer", "space", "motion.page.down", "page down"),
+
+		b("help", "esc", "help.close", "close"),
+		b("help", "q", "help.close", "close"),
+		b("help", "?", "help.close", "close"),
+		b("help", "ctrl+c", "help.close", "close"),
+	)
+	// Readline editing in every text line; a mode's own rows win a clash.
+	for _, mode := range []string{"input", "palette", "form"} {
+		taken := map[string]bool{}
+		for _, bd := range out {
+			if bd.Mode == mode && len(bd.Keys) > 0 {
+				taken[strings.Join(bd.Keys, " ")] = true
+			}
+		}
+		for _, rb := range input.ReadlineBindings(mode, "") {
+			if k := strings.Join(rb.Keys, " "); !taken[k] {
+				taken[k] = true
+				out = append(out, rb)
+			}
+		}
+	}
+	out = append(out, standard("viewer")...)
+	return append(out, standard("help")...)
+}
+
+// --- engine -----------------------------------------------------------------------
+
+type fn func(s core.State, a *App, c core.Command) (core.State, []core.Effect)
+
+// wrap turns an app handler into a core.Handler: it copies the App, clears
+// the status and any pending confirmation, sizes the tables, runs f, then
+// refreshes what derives from the cursor and stores the App back.
+func (env *Env) wrap(f fn) core.Handler {
+	return func(s core.State, c core.Command) core.StepResult {
+		a := appOf(s).clone()
+		a.prevConfirm, a.Confirm = a.Confirm, ""
+		a.Status, a.Tone = "", ""
+		rows := env.geometry(&a, s.Width, s.Height).rows
+		a.Cmd.Grid.PageSize, a.Job.Grid.PageSize = rows, rows
+		s, effects := f(s, &a, c)
+		a.prevConfirm = ""
+		env.afterStep(&a)
+		return core.Next(withApp(s, a), effects...)
+	}
+}
+
+// afterStep resets the detail scroll when the focused record changes and
+// reads the focused job's output for the detail pane.
+func (env *Env) afterStep(a *App) {
+	key := a.View + ":"
+	if r, ok := a.cur().Grid.FocusedRow(); ok {
+		key += r.ID
+	}
+	if key != a.detailKey {
+		a.detailKey, a.DetailOff = key, 0
+	}
+	if a.View != viewJobs || !a.Detail {
+		return
+	}
+	r, ok := a.focusedJob()
+	if !ok {
+		a.JobOut, a.jobOutKey = nil, ""
+		return
+	}
+	if a.jobOutKey == r.ID {
+		return
+	}
+	a.jobOutKey = r.ID
+	if out, err := env.Svc.store.ReadRun(r.ID); err == nil {
+		a.JobOut = &out
+	} else {
+		a.JobOut = &RunOutput{Run: r.Run, Stderr: "(output unavailable: " + err.Error() + ")"}
+	}
+}
+
+func setPage(s core.State, mode, focus string) core.State {
+	f := s.Pages[pageID]
+	f.Mode, f.FocusID = mode, focus
+	s.Pages = maps.Clone(s.Pages)
+	s.Pages[pageID] = f
+	return s
+}
+
+func openModal(s core.State, id, mode string, data any) core.State {
+	s = closeModal(s, id)
+	s.Modals = append(slices.Clone(s.Modals), core.Frame{ID: id, Kind: core.FrameModal, Mode: mode, FocusID: id, Data: data})
+	return s
+}
+
+func closeModal(s core.State, id string) core.State {
+	if i := slices.IndexFunc(s.Modals, func(f core.Frame) bool { return f.ID == id }); i >= 0 {
+		s.Modals = slices.Delete(slices.Clone(s.Modals), i, i+1)
+	}
+	return s
+}
+
+func modalData(s core.State, id string) any {
+	if i := slices.IndexFunc(s.Modals, func(f core.Frame) bool { return f.ID == id }); i >= 0 {
+		return s.Modals[i].Data
+	}
+	return nil
+}
+
+func setModalData(s core.State, id string, data any) core.State {
+	if i := slices.IndexFunc(s.Modals, func(f core.Frame) bool { return f.ID == id }); i >= 0 {
+		s.Modals = slices.Clone(s.Modals)
+		s.Modals[i].Data = data
+	}
+	return s
+}
+
+// dispatch asks the shell to run cmd through the engine after this step
+// (palette picks), so it meets the same handlers as a key.
+func dispatch(c core.Command) core.Effect { return core.CustomEffect{Kind: "dispatch", Data: c} }
+
+// viewerData is the full-screen reader's state.
+type viewerData struct {
+	Title, Source string
+	Offset        int
+}
+
+// terminalRun asks the shell to run a command on the terminal.
+type terminalRun struct {
+	Row    Command
+	Args   []string
+	Assume bool
+	JobID  string
+}
+
+// terminalDone is a terminal run's result.
+type terminalDone struct{ ID, Name string }
+
+func newEngine(env *Env) *core.Engine {
+	e := core.NewEngine(env.Km)
+	h := func(id string, f fn) { e.Handle(id, env.wrap(f)) }
+	scoped := func(scope, id string, f fn) { e.HandleScope(scope, id, env.wrap(f)) }
+
+	for _, id := range rowMotions {
+		scoped(viewCommands, id, rowMotion)
+		scoped(viewJobs, id, rowMotion)
+		scoped("palette", id, env.paletteCmd)
+		scoped("help", id, env.helpScroll)
+		scoped("form", id, env.formCmd)
+		scoped("viewer", id, viewerScroll)
+	}
+
+	h("cmd.run", env.runCaptured(false))
+	h("cmd.run.yes", env.runCaptured(true))
+	h("cmd.run.terminal", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		row, ok := a.focusedCmd()
+		if !ok {
+			a.warn("no command under the cursor")
+			return s, nil
+		}
+		id, err := newJobID()
+		if err != nil {
+			a.fail(err.Error())
+			return s, nil
+		}
+		return s, []core.Effect{core.CustomEffect{Kind: "run.terminal", Data: terminalRun{Row: row.Command, JobID: id}}}
+	})
+	h("cmd.rerun", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		row, ok := a.focusedCmd()
+		if !ok {
+			a.warn("no command under the cursor")
+			return s, nil
+		}
+		r, err := env.Svc.latestRun(row.Command)
+		if err != nil {
+			a.warn(row.Name + ": " + err.Error())
+			return s, nil
+		}
+		return s, env.rerun(a, r)
+	})
+	h("job.rerun", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		j, ok := a.focusedJob()
+		if !ok {
+			a.warn("no job under the cursor")
+			return s, nil
+		}
+		r, err := env.Svc.store.ReadRun(j.ID)
+		if err != nil {
+			a.fail(err.Error())
+			return s, nil
+		}
+		return s, env.rerun(a, r)
+	})
+	h("job.cancel", env.cancel)
+	h("run.done", env.runDone)
+	h("run.cancelled", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		id, _ := c.Args["value"].(string)
+		name := a.Running[id].Name
+		delete(a.Running, id)
+		env.load(a)
+		a.warn("cancelled " + name)
+		return s, nil
+	})
+
+	h("cmd.add", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		return openModal(s, modalForm, "form", newCmdForm(nil)), nil
+	})
+	h("cmd.edit", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		row, ok := a.focusedCmd()
+		if !ok {
+			a.warn("no command under the cursor")
+			return s, nil
+		}
+		return openModal(s, modalForm, "form", newCmdForm(&row.Command)), nil
+	})
+	for _, id := range append([]string{form.CmdInsert, form.CmdBackspace, "form.clear", form.CmdSubmit, form.CmdCancel}, input.ReadlineCommandIDs()...) {
+		scoped("form", id, env.formCmd)
+	}
+	h("cmd.edit.script", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		row, ok := a.focusedCmd()
+		if !ok {
+			a.warn("no command under the cursor")
+			return s, nil
+		}
+		// Checkpoint the current script so undo restores it.
+		if _, err := env.Svc.store.Change("cmd/"+row.ID, func(*Command, []Command) {}); err != nil {
+			a.fail(err.Error())
+			return s, nil
+		}
+		ed := editorCommand(context.Background(), row.Path)
+		return s, []core.Effect{core.ExecEffect{Name: ed.Args[0], Args: ed.Args[1:], Command: "edit.done"}}
+	})
+	h("edit.done", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		env.load(a)
+		if err, _ := c.Args["error"].(error); err != nil {
+			a.warn("editor: " + err.Error())
 		} else {
-			cells = append(cells, age(c.Created, now), author)
+			a.note("script saved · u undoes")
 		}
-		row := ocli.Row{Noun: "cmd", ID: "cmd/" + c.ID, Label: c.Name, Data: data, Cells: cells}
-		if st.Status == statusNew {
-			row.Tones = toneRow(tone, len(cells))
+		return s, nil
+	})
+	change := func(what string, f func(*Command, []Command)) fn {
+		return func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+			row, ok := a.focusedCmd()
+			if !ok {
+				a.warn("no command under the cursor")
+				return s, nil
+			}
+			if _, err := env.Svc.store.Change("cmd/"+row.ID, f); err != nil {
+				a.fail(err.Error())
+				return s, nil
+			}
+			env.load(a)
+			a.note(what + " " + row.Name + " · u undoes")
+			return s, nil
 		}
-		out = append(out, row)
 	}
-	return out, nil
+	h("cmd.delete", change("deleted", func(v *Command, _ []Command) { v.Deleted = true }))
+	h("cmd.pin", change("pin toggled on", func(v *Command, _ []Command) { v.Pinned = !v.Pinned }))
+	h("cmd.dismiss", change("dismissed", func(v *Command, _ []Command) { v.Dismissed = true }))
+	h("cmd.undismiss", change("undismissed", func(v *Command, _ []Command) { v.Dismissed = false }))
+	h("cmd.reset", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		row, ok := a.focusedCmd()
+		if !ok {
+			a.warn("no command under the cursor")
+			return s, nil
+		}
+		if a.prevConfirm != "reset:"+row.ID {
+			a.Confirm = "reset:" + row.ID
+			a.warn(fmt.Sprintf("reset the run count of %s to 0? press R again (retained jobs stay; u undoes)", row.Name))
+			return s, nil
+		}
+		var runs []Run
+		for _, r := range a.Runs {
+			runs = append(runs, r.Run)
+		}
+		at := env.Svc.store.now()
+		return change("reset the run count of", func(v *Command, _ []Command) { resetCommand(v, runs, at) })(s, a, c)
+	})
+	h("cmd.undo", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		v, err := env.Svc.store.Undo()
+		if err != nil {
+			a.info(err.Error())
+			return s, nil
+		}
+		env.load(a)
+		focusRow(&a.Cmd.Grid, v.ID)
+		a.note("undid the last change to " + v.Name)
+		return s, nil
+	})
+	h("cmd.view", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		if a.View == viewJobs {
+			return viewJob(env, s, a)
+		}
+		row, ok := a.focusedCmd()
+		if !ok {
+			a.warn("no command under the cursor")
+			return s, nil
+		}
+		return openModal(s, modalViewer, "viewer", viewerData{Title: "Script · " + row.Name, Source: cmdMarkdown(row, a.Now)}), nil
+	})
+	h("job.view", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) { return viewJob(env, s, a) })
+	h("job.delete", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		j, ok := a.focusedJob()
+		if !ok {
+			a.warn("no job under the cursor")
+			return s, nil
+		}
+		if err := env.Svc.store.DeleteRun(j.ID); err != nil {
+			a.fail(err.Error())
+			return s, nil
+		}
+		env.load(a)
+		a.note(fmt.Sprintf("deleted job #%d", j.Number))
+		return s, nil
+	})
+	h("cmd.yank", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		row, ok := a.focusedCmd()
+		if !ok {
+			a.warn("no command under the cursor")
+			return s, nil
+		}
+		if env.Copy == nil {
+			a.info("no clipboard (setting clipboard is off)")
+			return s, nil
+		}
+		cp, text := env.Copy, row.Script
+		a.info("copying " + row.Name)
+		return s, []core.Effect{core.AsyncEffect{Slot: "clipboard", Command: "yank.done", Run: func(context.Context) (any, error) { return row.Name, cp(text) }}}
+	})
+	h("yank.done", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		if err, _ := c.Args["error"].(error); err != nil {
+			a.warn("clipboard: " + err.Error())
+		} else {
+			a.note(fmt.Sprintf("copied the script of %v", c.Args["value"]))
+		}
+		return s, nil
+	})
+	h("cmd.pick", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		row, ok := a.focusedCmd()
+		if !ok || env.Picked == nil {
+			a.warn("no command under the cursor")
+			return s, nil
+		}
+		*env.Picked = row.Script
+		return s, []core.Effect{core.QuitEffect{}}
+	})
+	h("cmd.jobs", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		row, ok := a.focusedCmd()
+		if !ok {
+			a.warn("no command under the cursor")
+			return s, nil
+		}
+		a.View, a.JobsFor = viewJobs, row.ID
+		env.rebuild(a)
+		a.Job.Grid.SelectedIdx = len(a.Job.Grid.Items()) - 1
+		a.info("jobs of " + row.Name + " · tab shows every job")
+		return s, nil
+	})
+	h("view.toggle", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		if a.View == viewJobs {
+			a.View = viewCommands
+		} else {
+			a.View, a.JobsFor = viewJobs, ""
+			env.rebuild(a)
+		}
+		return s, nil
+	})
+
+	h("filter.open", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		a.Typing = true
+		return setPage(s, "input", nodeFilter), nil
+	})
+	h("filter.mode.cycle", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		l := a.cur()
+		l.Grid.CycleMatchMode()
+		l.Grid.Focused()
+		a.info("match mode: " + string(l.Grid.MatchMode))
+		return s, nil
+	})
+	h("filter.clear", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		l := a.cur()
+		if l.Grid.Query == "" {
+			if a.View == viewJobs && a.JobsFor != "" {
+				a.JobsFor = ""
+				env.rebuild(a)
+				a.info("every job")
+			}
+			return s, nil
+		}
+		l.Grid.Query = ""
+		l.Line.Set("")
+		l.Grid.Focused()
+		a.info("filter cleared")
+		return s, nil
+	})
+	h(input.CmdInsert, func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		l := a.cur()
+		l.Line.Sync(l.Grid.Query)
+		if l.Line.Insert(c.Arg("text")) {
+			l.Grid.Query = l.Line.Value()
+			l.Grid.Focused()
+		}
+		return s, nil
+	})
+	for _, id := range input.ReadlineCommandIDs() {
+		h(id, func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+			l := a.cur()
+			l.Line.Sync(l.Grid.Query)
+			if changed, _ := l.Line.HandleCommand(c); changed {
+				l.Grid.Query = l.Line.Value()
+				l.Grid.Focused()
+			}
+			return s, nil
+		})
+	}
+	h("input.accept", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		a.Typing = false
+		return setPage(s, "normal", nodeList), nil
+	})
+	h("input.cancel", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		a.Typing = false
+		l := a.cur()
+		l.Grid.Query = ""
+		l.Line.Set("")
+		l.Grid.Focused()
+		return setPage(s, "normal", nodeList), nil
+	})
+	h("sort.cycle", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		l, keys := a.cur(), sortKeys[a.View]
+		l.Sort++
+		if l.Sort >= len(keys) {
+			l.Sort = -1
+		}
+		applySort(l, keys)
+		a.info(sortLabel(l, keys))
+		return s, nil
+	})
+	h("sort.reverse", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		l, keys := a.cur(), sortKeys[a.View]
+		if l.Sort < 0 {
+			a.info("list order · s sorts")
+			return s, nil
+		}
+		if l.Grid.SortDir == table.SortDesc {
+			l.Grid.SortDir = table.SortAsc
+		} else {
+			l.Grid.SortDir = table.SortDesc
+		}
+		l.Grid.Focused()
+		a.info(sortLabel(l, keys))
+		return s, nil
+	})
+	h("order.toggle", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		if env.Svc.newestFirst() {
+			env.Svc.order = "oldest-first"
+		} else {
+			env.Svc.order = "newest-first"
+		}
+		env.load(a)
+		a.info("numbered " + env.Svc.order + " (this session; settings.json list.order keeps it)")
+		return s, nil
+	})
+	h("detail.toggle", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		a.Detail = !a.Detail
+		return s, nil
+	})
+	detailScroll := func(dir int) fn {
+		return func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+			if !a.Detail {
+				a.info("the detail pane is hidden; w shows it")
+				return s, nil
+			}
+			m := markdown.New("", env.detailSource(a))
+			m.Offset, m.PageSize = a.DetailOff, max(env.geometry(a, s.Width, s.Height).detailH-2, 1)
+			id := "motion.half.down"
+			if dir < 0 {
+				id = "motion.half.up"
+			}
+			m.HandleCommand(core.Command{ID: id, Count: c.Count})
+			a.DetailOff = m.Offset
+			return s, nil
+		}
+	}
+	h("detail.scroll.down", detailScroll(1))
+	h("detail.scroll.up", detailScroll(-1))
+	resize := func(d float64) fn {
+		return func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+			a.Ratio = min(max(a.Ratio+d*float64(c.Times()), 0.2), 0.8)
+			return s, nil
+		}
+	}
+	h("split.grow", resize(0.05))
+	h("split.shrink", resize(-0.05))
+	h("list.reload", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		env.load(a)
+		a.info(fmt.Sprintf("reloaded %d commands, %d jobs", len(a.Cmds), len(a.Runs)))
+		return s, nil
+	})
+	h("data.poll", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		if len(s.Modals) == 0 {
+			env.load(a)
+		}
+		return s, env.pollEffects()
+	})
+
+	h("palette.open", env.paletteOpen)
+	for _, id := range append([]string{"palette.insert", "palette.backspace", "palette.close", picker.CmdConfirm, picker.CmdModeCycle}, input.ReadlineCommandIDs()...) {
+		scoped("palette", id, env.paletteCmd)
+	}
+	h("help.open", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		return openModal(s, modalHelp, "help", 0), nil
+	})
+	h("help.close", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		return closeModal(s, modalHelp), nil
+	})
+	h("viewer.close", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		return closeModal(s, modalViewer), nil
+	})
+	h("app.close", func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		return s, []core.Effect{core.QuitEffect{}}
+	})
+	return e
 }
 
-func (a *App) list(c ochazuke.Ctx) ochazuke.Result {
-	rows, e := a.rows(ochazuke.StringArg(c.Args, "filter", ""))
-	return result(rows, e)
-}
-func (a *App) show(c ochazuke.Ctx, row Command) ochazuke.Result {
-	text, e := a.store.Script(row)
-	if e != nil {
-		return ochazuke.Failed(e)
+func (env *Env) pollEffects() []core.Effect {
+	if env.Refresh <= 0 {
+		return nil
 	}
-	if a.tui {
-		return result(nil, openScriptViewer(a.r, row.Name, text))
-	}
-	return ochazuke.Done(struct {
-		Command
-		Script string `json:"script"`
-	}{row, text})
+	d := env.Refresh
+	return []core.Effect{core.AsyncEffect{Slot: "poll", Command: "data.poll", Run: func(ctx context.Context) (any, error) {
+		select {
+		case <-time.After(d):
+		case <-ctx.Done():
+		}
+		return nil, nil
+	}}}
 }
 
-func (a *App) execute(c ochazuke.Ctx, row Command) ochazuke.Result {
-	path := ochazuke.StringArg(c.Args, "stdin", "")
-	if edit, _ := c.Args["edit-stdin"].(bool); edit {
-		if path != "" {
-			return ochazuke.Failed(fmt.Errorf("--stdin and --edit-stdin are mutually exclusive"))
-		}
-		return a.editStdin(c, row)
+func applySort(l *list, keys []sortKey) {
+	if l.Sort < 0 || l.Sort >= len(keys) {
+		l.Sort, l.Grid.SortField, l.Grid.SortDir = -1, "", table.SortNone
+	} else {
+		l.Grid.SortField, l.Grid.SortDir = keys[l.Sort].key, table.SortAsc
 	}
-	in, err := a.openInput(path, ochazuke.StringArg(c.Args, "stdin-kind", "file"))
+	l.Grid.Focused()
+}
+
+func sortLabel(l *list, keys []sortKey) string {
+	if l.Sort < 0 || l.Sort >= len(keys) || l.Grid.SortDir == table.SortNone {
+		return "list order"
+	}
+	dir := "▲"
+	if l.Grid.SortDir == table.SortDesc {
+		dir = "▼"
+	}
+	return "sorted by " + keys[l.Sort].title + " " + dir
+}
+
+func rowMotion(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+	g := &a.cur().Grid
+	if (c.ID == "motion.bottom" || c.ID == "motion.top") && c.Count > 0 {
+		g.SelectedIdx = c.Count - 1 // 5G: go to row 5
+		g.Focused()
+		return s, nil
+	}
+	g.HandleCommand(c)
+	return s, nil
+}
+
+func viewJob(env *Env, s core.State, a *App) (core.State, []core.Effect) {
+	j, ok := a.focusedJob()
+	if !ok {
+		a.warn("no job under the cursor")
+		return s, nil
+	}
+	out, err := env.Svc.store.ReadRun(j.ID)
 	if err != nil {
-		return ochazuke.Failed(err)
+		a.fail(err.Error())
+		return s, nil
 	}
-	return a.executeInput(row, stringList(c.Args["args"]), boolArg(c.Args, "assume-yes"), in)
+	return openModal(s, modalViewer, "viewer", viewerData{Title: fmt.Sprintf("Job #%d · %s", j.Number, out.CommandName), Source: jobMarkdown(out, j.Number)}), nil
 }
 
-func (a *App) executeInput(row Command, args []string, assume bool, in *runInput) ochazuke.Result {
-	a.clearInputNotice()
-	if !a.tui {
-		return result(nil, a.runRecordedInput(background(), row, args, assume, in))
+func viewerScroll(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+	v, ok := modalData(s, modalViewer).(viewerData)
+	if !ok {
+		return s, nil
 	}
-	cmd := withAssumeYes(scriptCommand(background(), row, args), assume)
-	finish, err := a.prepareRun(cmd, row, args, "tui", in)
+	m := markdown.New(v.Title, v.Source)
+	m.Offset, m.PageSize = v.Offset, max(s.Height*9/10-4, 1)
+	m.HandleCommand(c)
+	v.Offset = m.Offset
+	return setModalData(s, modalViewer, v), nil
+}
+
+// --- runs ---------------------------------------------------------------------------
+
+// startRun starts a captured run of row off the UI loop: its job is
+// recorded at once (so the Jobs table shows it running) and run.done
+// reports it. Its slot lets job.cancel stop it.
+func (env *Env) startRun(a *App, row Command, args []string, assume bool, in *runInput) []core.Effect {
+	id, err := newJobID()
 	if err != nil {
 		in.close()
-		return ochazuke.Failed(err)
+		a.fail(err.Error())
+		return nil
 	}
-	if in != nil {
-		cmd.Stdin = in.file
+	done := make(chan struct{})
+	env.jobs.Store(id, done)
+	if a.Running == nil {
+		a.Running = map[string]runningJob{}
 	}
-	return ochazuke.Foreground(cmd).Then(func(c ochazuke.Ctx, _ any, runErr error) {
-		defer in.close()
-		if err := finish(runErr); err != nil {
-			c.Error("save run: " + err.Error())
+	a.Running[id] = runningJob{CommandID: row.ID, Name: row.Name}
+	what := "running " + row.Name
+	if assume {
+		what += " (assume yes)"
+	}
+	a.info(what + " · C cancels")
+	svc := env.Svc
+	return []core.Effect{core.AsyncEffect{Slot: "run:" + id, Command: "run.done", Run: func(ctx context.Context) (any, error) {
+		defer close(done)
+		r, err := svc.captureRun(ctx, row, args, assume, in, "tui", id)
+		r.ID = id
+		if r.CommandName == "" {
+			r.CommandName = row.Name
 		}
-		a.refresh()
+		return r, err
+	}}}
+}
+
+func (env *Env) runCaptured(assume bool) fn {
+	return func(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+		row, ok := a.focusedCmd()
+		if !ok {
+			a.warn("no command under the cursor")
+			return s, nil
+		}
+		return s, env.startRun(a, row.Command, nil, assume, nil)
+	}
+}
+
+// rerun repeats a recorded run captured: its own line when it was unsaved,
+// else the current script, with its args, cwd, stdin and assume-yes.
+func (env *Env) rerun(a *App, r RunOutput) []core.Effect {
+	row, err := env.Svc.rerunCommand(r)
+	if err != nil {
+		a.fail("rerun: " + err.Error())
+		return nil
+	}
+	in, err := env.Svc.inputForRun(r.Run)
+	if err != nil {
+		a.fail("rerun: " + err.Error())
+		return nil
+	}
+	return env.startRun(a, row, r.Args, r.AssumeYes, in)
+}
+
+func (env *Env) runDone(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+	err, _ := c.Args["error"].(error)
+	switch v := c.Args["value"].(type) {
+	case RunOutput:
+		delete(a.Running, v.ID)
+		env.jobs.Delete(v.ID)
+		env.load(a)
+		if err != nil {
+			a.fail(v.CommandName + ": " + err.Error())
+			return s, nil
+		}
+		msg := fmt.Sprintf("%s: %s in %s", v.CommandName, runStatus(v.Run), v.Duration.Round(time.Millisecond))
+		if v.ExitCode != nil && *v.ExitCode == 0 {
+			a.note(msg)
+		} else {
+			a.fail(msg)
+		}
+		if env.ShowOutput {
+			n := 0
+			for _, r := range a.Runs {
+				if r.ID == v.ID {
+					n = r.Number
+				}
+			}
+			s = openModal(s, modalViewer, "viewer", viewerData{Title: fmt.Sprintf("Job #%d · %s", n, v.CommandName), Source: jobMarkdown(v, n)})
+		}
+	case terminalDone:
+		env.load(a)
+		if err != nil {
+			a.fail(v.Name + ": " + err.Error())
+		} else if r, e := env.Svc.store.ReadRun(v.ID); e == nil {
+			a.info(fmt.Sprintf("%s: %s in %s", v.Name, runStatus(r.Run), r.Duration.Round(time.Millisecond)))
+		} else {
+			a.info(v.Name + " finished")
+		}
+	default:
+		env.load(a)
+		if err != nil {
+			a.fail(err.Error())
+		}
+	}
+	return s, nil
+}
+
+// cancel stops a running captured job: a no-op effect in the job's slot
+// cancels its context (the script is killed), then waits for its record.
+func (env *Env) cancel(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+	id := ""
+	if a.View == viewJobs {
+		if j, ok := a.focusedJob(); ok {
+			id = j.ID
+		}
+	} else if row, ok := a.focusedCmd(); ok {
+		for rid, rj := range a.Running {
+			if rj.CommandID == row.ID && rid > id {
+				id = rid
+			}
+		}
+	}
+	rj, ok := a.Running[id]
+	if !ok || id == "" {
+		a.warn("no running job here to cancel")
+		return s, nil
+	}
+	ch, _ := env.jobs.Load(id)
+	done, _ := ch.(chan struct{})
+	a.info("cancelling " + rj.Name)
+	return s, []core.Effect{core.AsyncEffect{Slot: "run:" + id, Command: "run.cancelled", Run: func(context.Context) (any, error) {
+		if done != nil {
+			select {
+			case <-done:
+			case <-time.After(5 * time.Second):
+			}
+		}
+		return id, nil
+	}}}
+}
+
+// terminal runs a command on the terminal with its output recorded, the
+// UI suspended until the script exits.
+func (env *Env) terminal(req terminalRun) tea.Cmd {
+	svc := *env.Svc
+	svc.out, svc.errOut, svc.changed = os.Stdout, os.Stderr, nil
+	row := req.Row
+	row.JobID = req.JobID
+	cmd := withAssumeYes(scriptCommand(context.Background(), row, req.Args), req.Assume)
+	finish, err := svc.prepareRun(cmd, row, req.Args, "tui", nil)
+	if err != nil {
+		return func() tea.Msg {
+			return core.EffectResultEvent{Command: "run.done", Value: terminalDone{ID: req.JobID, Name: row.Name}, Err: err}
+		}
+	}
+	return tea.ExecProcess(cmd, func(runErr error) tea.Msg {
+		ferr := finish(runErr)
+		return core.EffectResultEvent{Command: "run.done", Value: terminalDone{ID: req.JobID, Name: row.Name}, Err: ferr}
 	})
 }
 
-func (a *App) yank(_ ochazuke.Ctx, row Command) ochazuke.Result {
-	text, e := a.store.Script(row)
-	if e != nil {
-		return ochazuke.Failed(e)
-	}
-	if e = clipboard(background(), text, a.run, a.errOut); e != nil {
-		return ochazuke.Failed(e)
-	}
-	return ochazuke.Done(map[string]string{"script": text})
+// --- form --------------------------------------------------------------------------
+
+// cmdForm is the add/edit modal: the form and the command it edits ("" adds).
+type cmdForm struct {
+	M  *form.Model
+	ID string
 }
 
-func (a *App) edit(c ochazuke.Ctx, row Command) ochazuke.Result {
-	_, e := a.store.Change(row.ID, func(*Command, []Command) {})
-	if e != nil {
-		return ochazuke.Failed(e)
-	}
-	cmd := editorCommand(background(), row.Path)
-	if a.tui {
-		return ochazuke.Foreground(cmd).Then(func(ochazuke.Ctx, any, error) { a.refresh() })
-	}
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = a.in, a.out, a.errOut
-	e = a.run(cmd)
-	a.refresh()
-	return result(row, exitError(e))
+func (f cmdForm) clone() cmdForm {
+	m := *f.M
+	m.Values = maps.Clone(m.Values)
+	m.Errors = maps.Clone(m.Errors)
+	f.M = &m
+	return f
 }
 
-func (a *App) change(row Command, fn func(*Command, []Command)) ochazuke.Result {
-	v, e := a.store.Change(row.ID, fn)
-	a.refresh()
-	return result(v, e)
+func newCmdForm(c *Command) cmdForm {
+	specs := []core.ParamSpec{
+		{Name: "name", Type: core.ParamString, Description: "unique; a taken name gets a suffix"},
+		{Name: "description", Type: core.ParamString},
+	}
+	if c == nil {
+		specs = append(specs, core.ParamSpec{Name: "script", Type: core.ParamString, Description: "one line; E opens $EDITOR for more"})
+	}
+	specs = append(specs, core.ParamSpec{Name: "cwd", Type: core.ParamString, Description: "working directory; empty runs where o-cmds runs"},
+		core.ParamSpec{Name: "tags", Type: core.ParamList, Description: "comma separated"})
+	init := map[string]any{}
+	title, id := "Add a command", ""
+	if c != nil {
+		init = map[string]any{"name": c.Name, "description": c.Description, "cwd": c.Cwd, "tags": strings.Join(c.Tags, ", ")}
+		title, id = "Edit "+c.Name, c.ID
+	}
+	m := form.New(title, specs, init)
+	m.SubmitLabel = "Save (enter) · esc cancels"
+	return cmdForm{M: m, ID: id}
 }
-func (a *App) archive(value bool) func(ochazuke.Ctx, Command) ochazuke.Result {
-	return func(_ ochazuke.Ctx, row Command) ochazuke.Result {
-		return a.change(row, func(v *Command, rows []Command) {
-			v.Deleted = value
-			if !value {
-				v.Name = uniqueName(v.Name, rows, v.ID)
+
+func (env *Env) formCmd(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+	old, ok := modalData(s, modalForm).(cmdForm)
+	if !ok {
+		return s, nil
+	}
+	f := old.clone()
+	switch c.ID {
+	case "form.clear":
+		if i := f.M.ActiveIdx; i >= 0 && i < len(f.M.Specs) {
+			f.M.SetValue(f.M.Specs[i].Name, "")
+		}
+	case form.CmdSubmit:
+		res, _ := f.M.HandleCommand(c)
+		if !res.Submitted {
+			var msgs []string
+			for _, name := range res.ErrorFields {
+				msgs = append(msgs, name+": "+f.M.Errors[name])
 			}
+			a.fail("not saved — " + strings.Join(msgs, "; "))
+			return setModalData(s, modalForm, f), nil
+		}
+		str := func(k string) string { v, _ := res.Values[k].(string); return strings.TrimSpace(v) }
+		tags, _ := res.Values["tags"].([]string)
+		for i := range tags {
+			tags[i] = strings.TrimSpace(tags[i])
+		}
+		tags = slices.DeleteFunc(tags, func(t string) bool { return t == "" })
+		if f.ID == "" {
+			script := str("script")
+			if script != "" && !strings.HasSuffix(script, "\n") {
+				script += "\n"
+			}
+			cmd, err := env.Svc.addScript(Add{Name: str("name"), Description: str("description"), Script: script, Cwd: str("cwd"), Tags: tags}, "")
+			if err != nil {
+				a.fail("add: " + err.Error())
+				return setModalData(s, modalForm, f), nil
+			}
+			env.load(a)
+			a.View = viewCommands
+			focusRow(&a.Cmd.Grid, cmd.ID)
+			a.note("added " + cmd.Name + " · E edits its script")
+			return closeModal(s, modalForm), nil
+		}
+		cwd := str("cwd")
+		if cwd != "" {
+			if abs, err := filepath.Abs(cwd); err == nil {
+				cwd = abs
+			}
+		}
+		cmd, err := env.Svc.store.Change("cmd/"+f.ID, func(v *Command, rows []Command) {
+			v.Name = uniqueName(str("name"), rows, v.ID)
+			v.Description, v.Cwd, v.Tags = str("description"), cwd, tags
 		})
+		if err != nil {
+			a.fail("edit: " + err.Error())
+			return setModalData(s, modalForm, f), nil
+		}
+		env.load(a)
+		a.note("saved " + cmd.Name + " · u undoes")
+		return closeModal(s, modalForm), nil
+	default:
+		res, _ := f.M.HandleCommand(c)
+		if res.Cancelled {
+			a.info("form discarded")
+			return closeModal(s, modalForm), nil
+		}
 	}
-}
-func (a *App) pin(value bool) func(ochazuke.Ctx, Command) ochazuke.Result {
-	return func(_ ochazuke.Ctx, row Command) ochazuke.Result {
-		return a.change(row, func(v *Command, _ []Command) { v.Pinned = value })
-	}
-}
-func (a *App) star(_ ochazuke.Ctx, row Command) ochazuke.Result {
-	return a.change(row, func(v *Command, _ []Command) { v.Pinned = !v.Pinned })
-}
-func (a *App) undo(ochazuke.Ctx) ochazuke.Result {
-	v, e := a.store.Undo()
-	a.refresh()
-	return result(v, e)
+	return setModalData(s, modalForm, f), nil
 }
 
-// JSON args used by catalog hosts share the same argument representation.
-func background() context.Context { return context.Background() }
+// --- palette -------------------------------------------------------------------
 
-func boolArg(args ochazuke.Arguments, name string) bool {
-	v, _ := args[name].(bool)
-	return v
+func (env *Env) paletteOpen(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+	keys := keysByCommand(env, "normal")
+	var items []picker.Item
+	for _, spec := range env.Specs {
+		if spec.HasTag("user") {
+			items = append(items, paletteItem(spec, keys))
+		}
+	}
+	for _, spec := range core.MotionSpecs() {
+		if slices.Contains(rowMotions, spec.ID) {
+			items = append(items, paletteItem(spec, keys))
+		}
+	}
+	m := picker.New("Commands", items)
+	m.Scope, m.Placeholder, m.MatchMode = "palette", "type to filter commands · tab cycles match mode", picker.MatchMode(env.Match)
+	return openModal(s, modalPalette, "palette", m), nil
 }
+
+func paletteItem(spec core.CommandSpec, keys map[string][]string) picker.Item {
+	sub := spec.Description
+	if k := keys[spec.ID]; len(k) > 0 {
+		sub += "  [" + strings.Join(k, ", ") + "]"
+	}
+	return picker.Item{ID: spec.ID, Title: spec.ID, Subtitle: sub, Keywords: []string{spec.Description}}
+}
+
+func (env *Env) paletteCmd(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+	old, ok := modalData(s, modalPalette).(*picker.Model)
+	if !ok {
+		return s, nil
+	}
+	m := *old
+	switch c.ID {
+	case "palette.insert":
+		m.AppendQuery(c.Arg("text"))
+	case "palette.backspace":
+		m.BackspaceQuery()
+	case "palette.close":
+		return closeModal(s, modalPalette), nil
+	default:
+		m.PageSize = max(s.Height*70/100-4, 1)
+		picked, _ := m.HandleCommand(c)
+		if picked != nil {
+			s = closeModal(s, modalPalette)
+			return s, []core.Effect{dispatch(core.Command{ID: picked.ID, Source: "palette", Actor: core.Actor{Kind: "user"}})}
+		}
+	}
+	if m.FilterErr != "" {
+		a.warn("regex: " + m.FilterErr)
+	}
+	return setModalData(s, modalPalette, &m), nil
+}
+
+func (env *Env) helpScroll(s core.State, a *App, c core.Command) (core.State, []core.Effect) {
+	off, _ := modalData(s, modalHelp).(int)
+	total := len(env.helpLines())
+	page := max(s.Height*85/100-2, 1)
+	n := c.Times()
+	switch c.ID {
+	case "motion.down":
+		off += n
+	case "motion.up":
+		off -= n
+	case "motion.top":
+		off = 0
+	case "motion.bottom":
+		off = total
+	case "motion.page.down":
+		off += n * page
+	case "motion.page.up":
+		off -= n * page
+	case "motion.half.down":
+		off += n * page / 2
+	case "motion.half.up":
+		off -= n * page / 2
+	}
+	off = min(max(off, 0), max(total-page, 0))
+	return setModalData(s, modalHelp, off), nil
+}
+
+// --- shell ---------------------------------------------------------------------------
+
+// newShell loads the store and builds the engine and tea shell.
+func newShell(env *Env) *otea.Shell {
+	a := App{View: viewCommands, Detail: env.Detail, Ratio: env.Ratio, Running: map[string]runningJob{}}
+	a.Cmd.Grid, a.Job.Grid = *table.New(nil, nil), *table.New(nil, nil)
+	a.Cmd.Grid.MatchMode, a.Job.Grid.MatchMode = env.Match, env.Match
+	a.Cmd.Sort, a.Job.Sort = -1, -1
+	env.load(&a)
+	if env.StartNew && !env.Svc.newestFirst() {
+		a.Cmd.Grid.SelectedIdx = len(a.Cmd.Grid.Rows) - 1
+	}
+	a.Job.Grid.SelectedIdx = len(a.Job.Grid.Rows) - 1
+	a.Cmd.Grid.Focused()
+	a.Job.Grid.Focused()
+	if len(env.Notes) > 0 {
+		a.warn(strings.Join(env.Notes, " · "))
+	}
+	initial := core.NewState(core.Frame{ID: pageID, FocusID: nodeList, Mode: "normal", Data: a})
+	sh := otea.New(newEngine(env), initial, env.view, env.Theme)
+	sh.OnPassThrough = func(e core.PassToWidgetEffect) tea.Cmd {
+		id := map[string]string{"wheeldown": "motion.down", "wheelup": "motion.up"}[mouseButton(e)]
+		if id == "" || e.NodeID != nodeList {
+			return nil
+		}
+		return func() tea.Msg { return core.CommandEvent{Command: core.Command{ID: id, Count: 3, Source: "mouse"}} }
+	}
+	sh.OnCustom = func(e core.CustomEffect) tea.Cmd {
+		switch d := e.Data.(type) {
+		case core.Command:
+			if e.Kind == "dispatch" {
+				return func() tea.Msg { return core.CommandEvent{Command: d} }
+			}
+		case terminalRun:
+			return env.terminal(d)
+		}
+		return nil
+	}
+	return sh
+}
+
+func mouseButton(e core.PassToWidgetEffect) string {
+	if e.Mouse == nil {
+		return ""
+	}
+	return e.Mouse.Button
+}
+
+// program starts the periodic reload with the shell.
+type program struct {
+	*otea.Shell
+	env *Env
+}
+
+func (p program) Init() tea.Cmd {
+	if p.env.Refresh <= 0 {
+		return nil
+	}
+	return func() tea.Msg { return core.CommandEvent{Command: core.Command{ID: "data.poll", Source: "startup"}} }
+}
+
+func (p program) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	_, cmd := p.Shell.Update(msg)
+	return p, cmd
+}
+
+var errNoPick = errors.New("nothing chosen")

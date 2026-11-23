@@ -1,11 +1,8 @@
 package main
 
 import (
-	"errors"
-	"strings"
+	"fmt"
 	"time"
-
-	"ofam.dev/ochazuke"
 )
 
 // A command's run state: how often it ran since its last reset and whether
@@ -15,7 +12,7 @@ import (
 const (
 	statusNew       = "new"       // never run and not dismissed
 	statusRan       = "ran"       // run at least once since the last reset
-	statusDismissed = "dismissed" // never run, marked seen (cmd.dismiss)
+	statusDismissed = "dismissed" // never run, marked seen (dismiss)
 )
 
 type commandStatus struct {
@@ -55,99 +52,14 @@ func commandStatusOf(c Command, runs []Run) commandStatus {
 	return st
 }
 
-// subjects are the commands a verb acts on: every row of a visual
-// selection (Ctx.Subjects), else the one target.
-func (a *App) subjects(c ochazuke.Ctx) ([]Command, error) {
-	var out []Command
-	seen := map[string]bool{}
-	for _, inst := range c.Subjects {
-		// A named target wins; only command rows are subjects (a CLI
-		// request's context instance is the app, not a row).
-		if inst == nil || ochazuke.StringArg(c.Args, "target", "") != "" {
-			continue
-		}
-		t, _ := inst.Data.(string)
-		if !strings.HasPrefix(t, "cmd/") {
-			continue
-		}
-		row, err := a.store.Resolve(t, a.newestFirst())
-		if err != nil {
-			return nil, err
-		}
-		if !seen[row.ID] {
-			seen[row.ID] = true
-			out = append(out, row)
-		}
+// resetCommand forgets a command's runs: its count goes to 0 and it reads
+// as new again. Retained run records stay, so undo brings the count back.
+func resetCommand(v *Command, runs []Run, at time.Time) {
+	if v.RunsTotal == nil {
+		n := retainedRuns(runs, v.ID)
+		v.RunsTotal = &n
 	}
-	if len(out) > 0 {
-		return out, nil
-	}
-	row, err := a.target(c)
-	if err != nil {
-		return nil, err
-	}
-	return []Command{row}, nil
-}
-
-// changeEach applies one change to every subject as a single undo step.
-func (a *App) changeEach(fn func(*Command)) ochazuke.AppHandler {
-	return func(c ochazuke.Ctx) ochazuke.Result {
-		rows, err := a.subjects(c)
-		if err != nil {
-			return ochazuke.Failed(err)
-		}
-		ids := make([]string, len(rows))
-		for i, row := range rows {
-			ids[i] = "cmd/" + row.ID
-		}
-		changed, err := a.store.ChangeAll(ids, func(v *Command, _ []Command) { fn(v) })
-		a.refresh()
-		if err != nil {
-			return ochazuke.Failed(err)
-		}
-		if len(changed) == 1 {
-			return ochazuke.Done(changed[0])
-		}
-		return ochazuke.Done(changed)
-	}
-}
-
-func (a *App) dismiss() ochazuke.AppHandler {
-	return a.changeEach(func(v *Command) { v.Dismissed = true })
-}
-
-func (a *App) undismiss() ochazuke.AppHandler {
-	return a.changeEach(func(v *Command) { v.Dismissed = false })
-}
-
-// reset forgets a command's runs: its count goes to 0 and it reads as new
-// again. Retained run records stay (cmd.jobs-clear deletes them), so a
-// reset loses nothing undo cannot bring back.
-func (a *App) reset() ochazuke.AppHandler {
-	return func(c ochazuke.Ctx) ochazuke.Result {
-		runs, err := a.store.Runs("")
-		if err != nil {
-			return ochazuke.Failed(err)
-		}
-		at := a.store.now()
-		return a.changeEach(func(v *Command) {
-			if v.RunsTotal == nil {
-				n := retainedRuns(runs, v.ID)
-				v.RunsTotal = &n
-			}
-			v.RunsBase, v.ResetAt, v.Dismissed = *v.RunsTotal, &at, false
-		})(c)
-	}
-}
-
-// newTone is the tone a new command's cells draw in; "" turns it off.
-func (a *App) newTone() string { return strings.TrimSpace(a.r.Settings().String("view.new-tone")) }
-
-func validTone(v any) error {
-	if s, _ := v.(string); strings.ContainsAny(strings.TrimSpace(s), " \t\n") {
-		return errors.New("a tone name is one word")
-	}
-	return nil
+	v.RunsBase, v.ResetAt, v.Dismissed = *v.RunsTotal, &at, false
 }
 
 func lastCell(st commandStatus, now time.Time) string {
@@ -157,13 +69,16 @@ func lastCell(st commandStatus, now time.Time) string {
 	return age(*st.Last, now)
 }
 
-func toneRow(tone string, cells int) []ochazuke.ToneSpan {
-	if tone == "" {
-		return nil
+func age(at, now time.Time) string {
+	d := now.Sub(at)
+	if d < time.Minute {
+		return "now"
 	}
-	spans := make([]ochazuke.ToneSpan, cells)
-	for i := range spans {
-		spans[i] = ochazuke.CellTone(i, tone)
+	if d < time.Hour {
+		return fmt.Sprintf("%dm", int(d.Minutes()))
 	}
-	return spans
+	if d < 24*time.Hour {
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	}
+	return fmt.Sprintf("%dd", int(d.Hours()/24))
 }

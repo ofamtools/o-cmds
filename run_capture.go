@@ -156,7 +156,7 @@ func (s *captureStream) close() error {
 
 // prepareRun is shared by CLI and foreground/catalog execution. The returned
 // completion must run after Cmd.Run/Wait, including start failures.
-func (a *App) prepareRun(cmd *exec.Cmd, c Command, args []string, source string, inputs ...*runInput) (func(error) error, error) {
+func (a *Service) prepareRun(cmd *exec.Cmd, c Command, args []string, source string, inputs ...*runInput) (func(error) error, error) {
 	// The durable count goes up whatever jobs.keep retains. Counting never
 	// blocks a run: its error is reported with the run's completion.
 	var countErr error
@@ -169,7 +169,7 @@ func (a *App) prepareRun(cmd *exec.Cmd, c Command, args []string, source string,
 	if c.Line == nil {
 		a.refresh()
 	}
-	keep := a.r.Settings().Int("jobs.keep")
+	keep := a.keep
 	if c.Line != nil {
 		keep = max(1, keep) // an unsaved line must leave its only durable record
 	}
@@ -222,7 +222,7 @@ func (a *App) prepareRun(cmd *exec.Cmd, c Command, args []string, source string,
 	}); err != nil {
 		return nil, err
 	}
-	limit := a.r.Settings().Int("jobs.max-bytes")
+	limit := a.maxBytes
 	mu := &sync.Mutex{}
 	out, err := newCaptureStream(a.out, limit, mu)
 	if err != nil {
@@ -269,7 +269,7 @@ func (a *App) prepareRun(cmd *exec.Cmd, c Command, args []string, source string,
 	}, nil
 }
 
-func (a *App) failedCapture(r Run, err error, keep int) error {
+func (a *Service) failedCapture(r Run, err error, keep int) error {
 	ended := time.Now().UTC()
 	r.Ended, r.Error = &ended, err.Error()
 	r.Duration = ended.Sub(r.Started)

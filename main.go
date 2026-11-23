@@ -1,32 +1,28 @@
-// Command o-cmds records small scripts for the owner to inspect and run.
+// Command o-cmds records small shell scripts for the owner to inspect, run
+// and review as jobs, built on Ochazuke v2.
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
-	"os/signal"
 	"path/filepath"
-	"slices"
 	"strings"
-	"syscall"
 
-	"ofam.dev/ochazuke"
-	ocli "ofam.dev/ochazuke/cli"
-	"ofam.dev/oden"
+	tea "charm.land/bubbletea/v2"
+
+	"ofam.dev/ochazuke/config"
+	"ofam.dev/ochazuke/ui"
 )
 
-func main() {
-	os.Exit(oden.Report(os.Stderr, "o-cmds", Main(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)))
-}
+func main() { os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)) }
 
-// --data is a global override. Strip it before oden resolves commands so it
-// works in either position, while preserving script arguments after --.
+// globalData strips --data DIR from args before subcommand dispatch so it
+// works in any position while leaving script arguments after -- untouched.
 func globalData(args []string) ([]string, string, error) {
 	var out []string
 	dir := ""
@@ -49,341 +45,173 @@ func globalData(args []string) ([]string, string, error) {
 		}
 		out = append(out, args[i])
 	}
-	var e error
+	var err error
 	if dir == "" {
-		dir, e = dataDir()
+		dir, err = dataDir()
 	} else {
-		dir, e = filepath.Abs(dir)
+		dir, err = filepath.Abs(dir)
 	}
-	return out, dir, e
+	return out, dir, err
 }
 
-func Main(args []string, in io.Reader, out, errOut io.Writer) error {
-	args, dir, e := globalData(args)
-	if e != nil {
-		return e
+const usage = `usage: o-cmds [--data DIR] [flags]
+       o-cmds list [--filter TEXT] [--format table|json|markdown]
+       o-cmds run NAME|NUMBER|ID [--assume-yes] [--stdin FILE|--edit-stdin] [--show] [-- ARG...]
+       o-cmds add|new [--name NAME] [--desc DESC] [--script TEXT|--file FILE] [--cwd DIR] [--tags A,B]
+       o-cmds show NAME|NUMBER|ID [--format script|json|markdown]
+       o-cmds jobs [COMMAND] [--show|--out|--err|--in|--delete JOB] [--format table|json]
+       o-cmds rerun JOB|COMMAND
+       o-cmds pick [NAME|NUMBER]
+       o-cmds shell-init zsh|bash [--name NAME]
+       o-cmds mcp
+       o-cmds catalog
+       o-cmds query [TEXT] [--kind cmds.command|cmds.job]
+
+Opens the interactive Commands & Jobs TUI when invoked with no subcommand.
+Press ? for live key help, : for the command palette, tab for Jobs.
+
+flags:
+`
+
+func run(args []string, in io.Reader, stdout, stderr io.Writer) int {
+	args, dir, err := globalData(args)
+	if err != nil {
+		fmt.Fprintln(stderr, "o-cmds:", err)
+		return 2
 	}
-	a, e := newApp(&Store{Dir: dir}, in, out, errOut)
-	if e != nil {
-		return e
+	cfg, set := loadConfig(configDir())
+	svc := newService(&Store{Dir: dir}, in, stdout, stderr, set)
+
+	if len(args) > 0 {
+		switch args[0] {
+		case "-v", "--version", "version":
+			fmt.Fprintf(stdout, "o-cmds %s\n", version)
+			return 0
+		case "--smoke":
+			return runSmoke(stdout)
+		case "list":
+			return reportErr(stderr, svc.cliList(args[1:]))
+		case "run":
+			return reportErr(stderr, svc.cliRun(context.Background(), args[1:]))
+		case "add", "new":
+			return reportErr(stderr, svc.cliAdd(args[1:]))
+		case "show":
+			return reportErr(stderr, svc.cliShow(args[1:]))
+		case "jobs":
+			return reportErr(stderr, svc.cliJobs(args[1:]))
+		case "rerun":
+			return reportErr(stderr, svc.cliRerun(context.Background(), args[1:]))
+		case "pick":
+			return reportErr(stderr, svc.cliPick(args[1:], cfg))
+		case "shell-init":
+			return reportErr(stderr, shellInit(args[1:], stdout, stderr))
+		case "mcp":
+			return reportErr(stderr, svc.mcp())
+		case "catalog":
+			return reportErr(stderr, writeJSON(stdout, buildManifest()))
+		case "query":
+			return reportErr(stderr, svc.cliQuery(args[1:]))
+		case "view":
+			args = args[1:]
+		}
 	}
-	return dispatch(a, args)
+
+	fl := flag.NewFlagSet("o-cmds", flag.ContinueOnError)
+	fl.SetOutput(stderr)
+	showVer := fl.Bool("version", false, "print version and exit")
+	smoke := fl.Bool("smoke", false, "run a scripted 120x32 session over a temp data dir without a TTY")
+	fl.Usage = func() {
+		fmt.Fprint(stderr, usage)
+		fl.PrintDefaults()
+	}
+	if err := fl.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		return 2
+	}
+	if *showVer {
+		fmt.Fprintf(stdout, "o-cmds %s\n", version)
+		return 0
+	}
+	if *smoke {
+		return runSmoke(stdout)
+	}
+	if fl.NArg() > 0 {
+		fmt.Fprintf(stderr, "o-cmds: unknown command %q\n", fl.Arg(0))
+		return 2
+	}
+	if set.Bool("clipboard", true) {
+		cfg.Copy = func(text string) error {
+			return clipboard(context.Background(), text, svc.run, stderr)
+		}
+	}
+	env := newEnv(svc, cfg)
+	sh := newShell(env)
+	if _, err := tea.NewProgram(program{sh, env}).Run(); err != nil {
+		fmt.Fprintln(stderr, "o-cmds:", err)
+		return 1
+	}
+	return 0
 }
 
-func dispatch(a *App, args []string) error {
-	app := oden.New("o-cmds", args, oden.WithBuiltins(), oden.WithStdio(a.in, a.out, a.errOut), oden.WithDefault(func(_ context.Context, args []string) error {
-		if len(args) > 0 {
-			return oden.ErrNotFound
-		}
-		return dispatch(a, []string{"cmd", "browse"})
-	}))
-	sh := a.shell()
-	// Register the same app verbs with a thin stream adapter. Oden still
-	// owns groups, aliases, help and unique prefixes; ochazuke owns calls.
-	groups := map[string][]oden.Command{}
-	for _, spec := range append(a.verbs(), a.setupSpecs()...) {
-		v := spec
-		params := []oden.Parameter{}
-		for _, name := range a.r.Operations.At(ochazuke.Key(v.noun + "." + v.name)).ParameterOrder() {
-			p := v.params[name]
-			params = append(params, oden.Parameter{Name: name, Type: p.Type, Description: p.Description, Required: p.Required})
-		}
-		groups[v.noun] = append(groups[v.noun], oden.Command{Name: v.name, Summary: v.description, Parameters: params, Usage: "[NAME|NUMBER] [--flags]", Run: func(ctx context.Context, words []string) error {
-			if v.cli != nil {
-				return v.cli(ctx, words)
-			}
-			return a.verbCLI(sh, v, words)
-		}})
+func reportErr(stderr io.Writer, err error) int {
+	if err == nil {
+		return 0
 	}
-	// The standard verbs of the thing nouns (get, set, create, archive, ...)
-	// that no named verb replaces are reachable beside the named ones.
-	named := map[string]bool{}
-	for _, spec := range append(a.verbs(), a.setupSpecs()...) {
-		named[spec.noun+"."+spec.name] = true
+	var ee *ExitError
+	if errors.As(err, &ee) {
+		return ee.Code
 	}
-	keys := make([]string, 0, a.r.Operations.Len())
-	for key := range a.r.Operations.Entries() {
-		keys = append(keys, key)
-	}
-	slices.Sort(keys)
-	for _, key := range keys {
-		op := a.r.Operations.At(ochazuke.Key(key))
-		if _, ours := groups[op.Noun()]; !ours || op.Standard == "" || named[key] {
-			continue
-		}
-		v := verbSpec{noun: op.Noun(), name: op.Name(), description: op.Description}
-		params := []oden.Parameter{}
-		for _, name := range op.ParameterOrder() {
-			p := op.Parameters[name]
-			params = append(params, oden.Parameter{Name: name, Type: p.Type, Description: p.Description, Required: p.Required})
-		}
-		groups[v.noun] = append(groups[v.noun], oden.Command{Name: v.name, Summary: v.description, Parameters: params, Usage: "[NAME|NUMBER] [--flags]", Run: func(ctx context.Context, words []string) error {
-			return a.verbCLI(sh, v, words)
-		}})
-	}
-	for _, noun := range []string{"cmd", "job"} {
-		app.Add(oden.Command{Name: noun, Summary: "inspect and manage " + noun + " records", Children: groups[noun]})
-	}
-	for _, entry := range []struct{ bare, verb, summary string }{
-		{"view", "browse", "open the Commands page"},
-		{"pick", "pick", "choose a script without executing it"},
-		{"shell-init", "shell-init", "print the optional current-shell function"},
-		{"mcp", "serve", "serve the legacy curated MCP protocol"},
-	} {
-		app.Add(oden.Command{Name: entry.bare, Summary: entry.summary, Run: func(_ context.Context, words []string) error {
-			return dispatch(a, append([]string{"cmd", entry.verb}, words...))
-		}})
-	}
-	var setupCommands []oden.Command
-	for _, op := range a.setupOperations() {
-		setupCommands = append(setupCommands, oden.Command{Name: op.Name(), Summary: op.Description, Run: func(_ context.Context, words []string) error {
-			return dispatch(a, append([]string{"cmd", "setup-" + op.Name()}, words...))
-		}})
-	}
-	app.Add(oden.Command{Name: "setup", Summary: "manage this app's instruction destinations", Children: setupCommands, Run: func(_ context.Context, words []string) error {
-		return dispatch(a, append([]string{"cmd", "setup-check"}, words...))
-	}})
-	ocli.Mount(app, sh)
-	app.HelpText += "\nGlobal: --data DIR overrides the command storage directory.\ncmd add reads stdin unless --file or --script supplies the script.\ncmd list is a table; --json '{}' requests catalog rows.\ncmd run NAME|NUMBER -- ARG... streams directly and returns the script's status."
-	return app.Run(context.Background())
+	fmt.Fprintln(stderr, "o-cmds:", err)
+	return 1
 }
 
-func machineArgs(args []string) bool {
-	for _, arg := range args {
-		if arg == "--json" || strings.HasPrefix(arg, "--json=") || arg == "--format" || strings.HasPrefix(arg, "--format=") {
-			return true
-		}
+// configDir is $XDG_CONFIG_HOME/o-cmds, else ~/.config/o-cmds.
+func configDir() string {
+	if x := os.Getenv("XDG_CONFIG_HOME"); x != "" {
+		return filepath.Join(x, "o-cmds")
 	}
-	return false
+	if home, err := os.UserHomeDir(); err == nil {
+		return filepath.Join(home, ".config", "o-cmds")
+	}
+	return ""
 }
 
-func (a *App) verbCLI(sh *ocli.Shell, v verbSpec, args []string) error {
-	words := append([]string{v.noun, v.name}, args...)
-	if machineArgs(args) || v.output == "" {
-		return sh.Run(background(), words)
-	}
-	if v.output == "table" {
-		return sh.Run(background(), append(words, "--format", "table"))
-	}
-	var buf bytes.Buffer
-	copyShell := *sh
-	copyShell.Stdout = &buf
-	if e := copyShell.Run(background(), words); e != nil {
-		return e
-	}
-	if v.output == "bytes" {
-		var answer streamAnswer
-		if err := json.Unmarshal(buf.Bytes(), &answer); err != nil {
-			return err
-		}
-		_, err := a.out.Write(answer.Data)
-		return err
-	}
-	if strings.HasPrefix(v.output, "run-") {
-		return a.printRunResult(v.output, buf.Bytes())
-	}
-	var text string
-	if v.output == "raw" {
-		// A text answer printed exactly as the script or the labelled streams read.
-		if e := json.Unmarshal(buf.Bytes(), &text); e != nil {
-			return e
-		}
-		_, e := io.WriteString(a.out, text)
-		return e
-	}
-	if v.output == "script" {
-		var rec struct {
-			Script string `json:"script"`
-		}
-		if e := json.Unmarshal(buf.Bytes(), &rec); e != nil {
-			return e
-		}
-		text = rec.Script
-	} else {
-		if e := json.Unmarshal(buf.Bytes(), &text); e != nil {
-			return e
-		}
-		text += "\n"
-	}
-	_, e := io.WriteString(a.out, text)
-	return e
-}
-
-// wantsShow reports whether a cmd run line asks to capture and read the
-// output: --show, or show:true in a host's --json arguments. Words after --
-// belong to the script.
-func wantsShow(args []string) bool {
-	for i, arg := range args {
-		raw, isJSON := strings.CutPrefix(arg, "--json=")
-		switch {
-		case arg == "--":
-			return false
-		case arg == "--show":
-			return true
-		case arg == "--json" && i+1 < len(args):
-			raw, isJSON = args[i+1], true
-		}
-		var host struct {
-			Show bool `json:"show"`
-		}
-		if isJSON && json.Unmarshal([]byte(raw), &host) == nil && host.Show {
-			return true
-		}
-	}
-	return false
-}
-
-// runLeaf is the cmd run leaf: a line that asks to show captures and reads
-// the output through the shared verb path, else the script's stream is
-// owned by runCLI.
-func (a *App) runLeaf(ctx context.Context, args []string) error {
-	if wantsShow(args) {
-		return a.shell().Run(ctx, append([]string{"cmd", "run"}, args...))
-	}
-	return a.runCLI(ctx, args)
-}
-
-// runBoolFlags are the cmd run flags that take no value.
-var runBoolFlags = map[string]bool{"--yes": true, "--assume-yes": true, "--edit-stdin": true, "--help": true, "-h": true}
-
-// This leaf owns a stream rather than a JSON answer: never append a framework
-// result to the script's bytes, and pass an ExitError through to oden.Report.
-func (a *App) runCLI(ctx context.Context, args []string) error {
-	var argv []string
-	for i, arg := range args {
-		if arg == "--" {
-			argv = append(argv, args[i+1:]...)
-			args = args[:i]
-			break
-		}
-	}
-	fs := flag.NewFlagSet("cmd run", flag.ContinueOnError)
-	fs.SetOutput(a.errOut)
-	target := fs.String("target", "", "Command name, number or ID")
-	raw := fs.String("json", "{}", "Host arguments")
-	encoded := fs.String("args", "", "JSON array of script arguments")
-	inputPath := fs.String("stdin", "", "File to use as stdin")
-	inputKind := fs.String("stdin-kind", "file", "Input provenance: file or edited (retained for reruns)")
-	editInput := fs.Bool("edit-stdin", false, "Edit an empty stdin buffer")
-	fs.Bool("yes", false, "Host compatibility")
-	assume := fs.Bool("assume-yes", false, "Run with OCHAZUKE_ASSUME_YES=1: ochazuke tools answer their confirm prompts yes")
-	// flag accepts flags before positional words; move one target word to
-	// the end, leaving option values paired and everything after -- intact.
-	var positional []string
-	var flags []string
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		if !strings.HasPrefix(arg, "-") {
-			positional = append(positional, arg)
-			continue
-		}
-		flags = append(flags, arg)
-		if !strings.Contains(arg, "=") && !runBoolFlags[arg] {
-			i++
-			if i >= len(args) {
-				return fmt.Errorf("%s needs a value", arg)
-			}
-			flags = append(flags, args[i])
-		}
-	}
-	if e := fs.Parse(flags); e != nil {
-		if errors.Is(e, flag.ErrHelp) {
+// loadConfig reads optional bindings.json, themes.json and settings.json
+// (JSONC) from dir. Missing files are fine; broken ones are reported as
+// notes and skipped. Nothing is ever written.
+func loadConfig(dir string) (Config, *config.Settings) {
+	var cfg Config
+	read := func(name string) []byte {
+		if dir == "" {
 			return nil
 		}
-		return &oden.ExitError{Code: 2}
+		data, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			cfg.Notes = append(cfg.Notes, name+": "+err.Error())
+		}
+		return data
 	}
-	var host struct {
-		Target    string   `json:"target"`
-		Args      []string `json:"args"`
-		Stdin     string   `json:"stdin"`
-		EditStdin bool     `json:"edit-stdin"`
-		StdinKind string   `json:"stdin-kind"`
-		AssumeYes bool     `json:"assume-yes"`
-	}
-	if e := json.Unmarshal([]byte(*raw), &host); e != nil {
-		return e
-	}
-	assumeYes := *assume || host.AssumeYes
-	if *target == "" {
-		*target = host.Target
-	}
-	if len(positional) >= 1 {
-		argv = append(append([]string{}, positional[1:]...), argv...)
-		*target = positional[0]
-	}
-	if *encoded != "" {
-		if e := json.Unmarshal([]byte(*encoded), &host.Args); e != nil {
-			return e
+	if data := read("bindings.json"); data != nil {
+		if bs, err := config.LoadBindings(data); err != nil {
+			cfg.Notes = append(cfg.Notes, err.Error())
+		} else {
+			cfg.Bindings = bs
 		}
 	}
-	argv = append(host.Args, argv...)
-	if *target == "" {
-		return errors.New("name a command or displayed number")
-	}
-	row, e := a.store.Resolve(*target, a.newestFirst())
-	if e != nil {
-		return e
-	}
-	if *inputPath == "" {
-		*inputPath = host.Stdin
-	}
-	if *editInput || host.EditStdin {
-		if *inputPath != "" {
-			return errors.New("--stdin and --edit-stdin are mutually exclusive")
+	if data := read("themes.json"); data != nil {
+		if th, err := config.LoadTheme(data, ui.DefaultDarkTheme()); err != nil {
+			cfg.Notes = append(cfg.Notes, err.Error())
+		} else {
+			cfg.Theme = &th
 		}
-		return a.runEdited(ctx, row, argv, assumeYes)
 	}
-	if host.StdinKind != "" && *inputKind == "file" {
-		*inputKind = host.StdinKind
-	}
-	input, err := a.openInput(*inputPath, *inputKind)
+	set, err := config.LoadSettings(read("settings.json"), defaultSettings)
 	if err != nil {
-		return err
+		cfg.Notes = append(cfg.Notes, err.Error())
+		set, _ = config.LoadSettings(nil, defaultSettings)
 	}
-	return a.runRecordedInput(ctx, row, argv, assumeYes, input)
-}
-
-func (a *App) runEdited(ctx context.Context, row Command, argv []string, assume bool) error {
-	path, err := a.newInputBuffer()
-	if err != nil {
-		return err
-	}
-	defer os.Remove(path)
-	editor := editorCommand(ctx, path)
-	editor.Stdin, editor.Stdout, editor.Stderr = a.in, a.out, a.errOut
-	if err := editedContent(path, a.run(editor)); err != nil {
-		if errors.Is(err, errEmptyInput) {
-			_, _ = fmt.Fprintln(a.errOut, err)
-			return nil
-		}
-		return err
-	}
-	input, err := a.openInput(path, "edited")
-	if err != nil {
-		return err
-	}
-	return a.runRecordedInput(ctx, row, argv, assume, input)
-}
-
-func (a *App) runRecordedInput(ctx context.Context, row Command, argv []string, assume bool, input *runInput) error {
-	defer input.close()
-	// A terminal sends these to the whole foreground process group. Let the
-	// script receive them while the recorder survives to save its result.
-	interrupts := make(chan os.Signal, 1)
-	signal.Notify(interrupts, os.Interrupt, syscall.SIGQUIT)
-	defer signal.Stop(interrupts)
-	cmd := withAssumeYes(scriptCommand(ctx, row, argv), assume)
-	finish, e := a.prepareRun(cmd, row, argv, "cli", input)
-	if e != nil {
-		return e
-	}
-	cmd.Stdin = a.in
-	if input != nil {
-		cmd.Stdin = input.file
-	}
-	if cmd.Stdout == nil {
-		cmd.Stdout, cmd.Stderr = a.out, a.errOut
-	}
-	runErr := a.run(cmd)
-	return errors.Join(exitError(runErr), finish(runErr))
+	cfg.Settings = set
+	return cfg, set
 }
